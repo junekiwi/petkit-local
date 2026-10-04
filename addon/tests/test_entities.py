@@ -62,13 +62,20 @@ EXPECTED_ENTITY_COUNTS = {
     # property post and nothing here read. No other litter box has it.
     # Every litter box +1 on 2026-10-23: `last_pet`, the pet the last visit
     # was credited to.
+    #
+    # 84 -> 81 on the W7H, 2026-10-04, matched to a capture of the official
+    # app: -7 for controls the app does not have (Water Change, which sent the
+    # `start_action: 5` that crashed the device; Power Off/On; heater, general
+    # do-not-disturb, vomit detection, WiFi status light), +1 for Drain, +3 for
+    # the three do-not-disturb windows. The seven are cleared from HA, not just
+    # left unannounced (`CategorySpec.model_retired`).
     "t3": 47, "t4": 47, "t5": 83, "t6": 90, "t7": 83,
     "feeder": 25, "feedermini": 25, "d3": 25, "d4": 25, "d4s": 25,
     # 2026-08-12: replaced `enable_feed_video` button with individual switches
     # (feed_picture, eat_video, voice_prompt, voice_disturb_mode, disturb_mode)
     # and added selected_sound number + play_sound button. Net +6.
     "d4h": 57, "d4sh": 61,
-    "w4": 24, "w5": 24, "ctw2": 24, "ctw3": 24, "w7h": 84,
+    "w4": 24, "w5": 24, "ctw2": 24, "ctw3": 24, "w7h": 81,
     "k2": 12, "k3": 12,
 }
 
