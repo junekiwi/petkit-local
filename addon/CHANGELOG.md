@@ -64,6 +64,19 @@
   3.1.1 fires immediately. MQTT 5 is still not spoken; every other CONNACK is
   unchanged.
 
+- **Proxy mode now teaches Home Assistant the settings you change in PetKit's
+  app** (AlexMorbo, upstream PR #40). A W7H reports none of its settings, so
+  its controls only ever showed what was last set from HA. With proxy mode on,
+  every setting the cloud sends the device (`property.set` over MQTT, and the
+  `settings` block of a proxied `dev_device_info`) is now recorded the same way
+  an HA write is, and the entities and the panel's schedule editor update,
+  do-not-disturb windows included. Only fields the device has a control for are
+  kept, the cloud's `timezone` is ignored, and the device receives exactly what
+  it did before. `dev_device_info` only fills settings never set, so it cannot
+  undo a change made from HA while proxied. This applies to every model, though
+  only the W7H needed it. Each learned value is logged (`learned
+  <field>=<value> from ...`). Nothing changes with proxy mode off.
+
 ## 2.1.4 — 2026-10-23
 
 - **A litter box without a camera names the cat by weight.** A T4 cannot
