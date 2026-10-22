@@ -84,6 +84,9 @@ options:
   mqtt_tls: true
   mqtt_tls_port: 443
   mqtt_strict_auth: false
+  # Keep the T3/T4/D4 on HTTP: they cannot use this broker unless reflashed.
+  # Needs one DNS record, see the documentation.
+  esp32_http_only: true
   # NOTE: proxy mode and payload capture are deliberately NOT options here.
   # Both are debugging switches you flip while watching a device, so they live
   # in the panel's Setup -> Settings and persist to
@@ -100,5 +103,6 @@ schema:
   mqtt_tls: bool
   mqtt_tls_port: port
   mqtt_strict_auth: bool
+  esp32_http_only: bool
 startup: application
 boot: auto

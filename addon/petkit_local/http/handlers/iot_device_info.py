@@ -27,11 +27,13 @@ log = logging.getLogger(__name__)
 #: loop of issue #33) where the flat block lets it settle (live, one T4; a T3
 #: owner reports the same in #35). The one contrary report, a T4 on
 #: LocalKit-patched firmware reading the wrapped block (#34), is not stock
-#: firmware. Deliberately NOT
-#: `not device.is_next_gen`: that complement also holds the ESP32 feeders, the
-#: BLE-only codenames and any model not yet listed, none of which has evidence
-#: either way, so they keep the wrapped block the D4SH capture showed.
-FLAT_CREDENTIAL_TYPES = frozenset({"t3", "t4"})
+#: firmware. The D4 joined on a proxied capture of PetKit's own reply to two
+#: Fresh Element Solos (fw 1.267, 2026-10-22), flat exactly like the T4's beside
+#: them. Deliberately NOT
+#: `not device.is_next_gen`: that complement also holds the other ESP32 feeders,
+#: the BLE-only codenames and any model not yet listed, none of which has
+#: evidence either way, so they keep the wrapped block the D4SH capture showed.
+FLAT_CREDENTIAL_TYPES = frozenset({"t3", "t4", "d4"})
 
 
 def self_mqtt_host(config: dict) -> str:
@@ -93,12 +95,21 @@ async def handle_iot_device_info(request: web.Request) -> web.Response:
         device signs its MQTT CONNECT with (see `mqtt/auth.py`):
         `payloads.to_iot_device_info_flat()` for `FLAT_CREDENTIAL_TYPES`,
         `payloads.to_iot_device_info()` (nested in the Aliyun `ali` envelope)
-        for everything else.
+        for everything else. A model kept on HTTP (`payloads.http_only_broker`)
+        gets `payloads.HTTP_ONLY_PRODUCT_KEY` and the broker name built from it.
     """
     device = _resolve_or_create_device(request)
     if not device:
         return no_device_response()
-    mqtt_host = device.resolve_mqtt_host(self_mqtt_host(request.app["config"]))
+    config = request.app["config"]
+    http_only = payloads.http_only_broker(device, config.get("esp32_http_only", True))
+    if http_only:
+        product_key, mqtt_host = http_only
+        log.info("IoT device info (flat, HTTP only): id=%d -> pk=%s mqttHost=%s",
+                 device.petkit_id, product_key, mqtt_host)
+        return web.json_response(
+            payloads.to_iot_device_info_flat(device, mqtt_host, product_key))
+    mqtt_host = device.resolve_mqtt_host(self_mqtt_host(config))
     flat = device.device_type in FLAT_CREDENTIAL_TYPES
     log.info("IoT device info%s: id=%d -> pk=%s dn=%s mqttHost=%s",
              " (flat)" if flat else "", device.petkit_id, device.mqtt_product_key,

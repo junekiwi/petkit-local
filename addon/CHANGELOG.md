@@ -2,6 +2,34 @@
 
 ## Unreleased
 
+- **The T3, T4 and D4 are kept on HTTP, deliberately.** Their firmware ignores
+  the `mqttHost` it is handed and dials a broker name built from its product
+  key, and trusts no certificate but its own GlobalSign root: a T4 and two D4s
+  given PetKit's own replies (proxied, 2026-10-22) dialled
+  `<productKey>.iot-as-mqtt.eu-central-1.aliyuncs.com` every time, and refused
+  any other certificate with `unknown ca`. No broker of ours can serve them
+  unflashed, and handing them a key of ours does worse than fail: Aliyun answers
+  every name under that domain, so it sends the device to PetKit's real broker
+  with credentials it does not know there. They now get the fixed key `petkit-local-http`,
+  whose name one DNS record points at 127.0.0.1; refused, the same three devices
+  retried for about a minute and then polled the HTTP heartbeat for good, with
+  every command arriving there. Proxy mode hands out the same key. The new
+  option `esp32_http_only` (default on) turns it off for a reflashed device.
+- **The D4 is answered flat too, and gets its settings at signup.** PetKit's
+  `dev_iot_device_info` to two Fresh Element Solos (fw 1.267) is flat like a
+  T4's, and its `dev_signup` carries the settings block, which that model does
+  not otherwise fetch until a setting changes. Both now match, and the D4's
+  settings carry the `factor: 10` and `lightRange` PetKit sends it.
+- **Single-hopper feeders schedule with `a`, not `a1`/`a2`** (Balint Toth,
+  upstream PR #29). Sent `a1`/`a2`, a YumShare Solo runs the feed cycle and
+  dispenses nothing. The D4 is covered as well, and PetKit's own `dev_feed_get`
+  to a D4 (fw 1.267, proxied 2026-10-22) carries a lone `a` per meal and in
+  `latest[]`, so the shape is confirmed for it too.
+- **A Pura Air's liquid and battery reach Home Assistant from an HTTP parent**
+  (Nikola Milojević, upstream PR #28, issue #21). A T4 on the heartbeat
+  reports them only inside `dev_state_report` and `dev_event_report`.
+- **A T4's Times Used is counted from its visits** (Nikola Milojević, upstream
+  PR #32). The firmware reports `litter.usedTimes` as a constant 0.
 - **The ESP32 litter boxes (T3, T4) get their MQTT credentials flat.** Every
   model was answered with the `ali`-wrapped block on all three
   `iot_device_info` endpoints. PetKit's cloud answers a T3 (fw 1.491) flat, no

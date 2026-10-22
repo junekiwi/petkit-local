@@ -107,6 +107,17 @@ def split_bucket_authority(bucket_endpoint: str) -> tuple[str, str] | None:
     return head, tail
 
 
+def aliyun_broker_name(product_key: str) -> str:
+    """The broker name an ESP32 model dials, built from its product key.
+
+    A T4 and two D4s handed PetKit's own `dev_iot_device_info` ignored its
+    `mqttHost` and each dialled `{productKey}.iot-as-mqtt.eu-central-1.
+    aliyuncs.com` instead (2026-10-22, seen by DNS); issue #35 reports the same
+    of a T3. localkit builds the same name for the same reason.
+    """
+    return f"{product_key}.iot-as-mqtt.eu-central-1.aliyuncs.com"
+
+
 @dataclass
 class Device:
     """One registered PetKit device: its identity, credentials and live state.
@@ -350,14 +361,15 @@ class Device:
 
     @property
     def aliyun_mqtt_host(self) -> str:
-        """The Aliyun-format MQTT hostname the firmware expects.
+        """The Aliyun-format MQTT hostname for this device's product key.
 
-        It does NOT resolve on the LAN, so it is only ever a safe fallback for
-        when we cannot derive our own broker host: the device's MQTT connect
-        then DNS-fails and it settles on the HTTP heartbeat, which is a working
-        degraded mode rather than a failure.
+        Only a fallback for when we cannot derive our own broker host. It is
+        NOT unresolvable, as this once said: Aliyun answers every
+        `*.iot-as-mqtt.eu-central-1.aliyuncs.com` (checked 2026-10-22, made-up
+        keys included), so a device handed it reaches PetKit's real broker
+        rather than failing over to the HTTP heartbeat.
         """
-        return f"{self.mqtt_product_key}.iot-as-mqtt.eu-central-1.aliyuncs.com"
+        return aliyun_broker_name(self.mqtt_product_key)
 
     def resolve_mqtt_host(self, real_host: str) -> str:
         """Which `mqttHost` to hand this device.

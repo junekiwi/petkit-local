@@ -46,6 +46,7 @@ PetKit device ──HTTP───► petkit-local ──MQTT discovery──► 
 | `mqtt_tls` | `true` | Add a TLS listener to the device-facing broker (self-signed, generated on first start). |
 | `mqtt_tls_port` | `443` | Port for that listener. Change this and the matching port mapping together if your device dials a different one. |
 | `mqtt_strict_auth` | `false` | Enforce the Aliyun HMAC signature. Off by default so a signature nuance cannot lock a device out. |
+| `esp32_http_only` | `true` | Keep the T3, T4 and D4 on the HTTP heartbeat. They cannot use this broker unless reflashed, and need one DNS record for this — see *Networking*. Turn it off only for a reflashed device whose own broker name is pointed here. |
 
 Payload capture and proxy mode are **not** options here. Both are things you turn on
 while watching a device, so they live in the panel's **Setup → Settings**, take
@@ -110,6 +111,25 @@ than serving you its own reply labelled as PetKit's. To use proxy mode on such a
 network, set *DNS for upstream lookups* in Setup to a resolver that still answers
 truthfully — that setting is used for finding the upstream server and nothing
 else.
+
+**The T3, T4 and D4 stay on HTTP, and need one DNS record for it.** Their
+firmware ignores the broker address it is given and builds one from its MQTT
+product key, `<productKey>.iot-as-mqtt.eu-central-1.aliyuncs.com`, and it
+trusts no certificate but the one compiled into it. So this app cannot be
+their broker. With `esp32_http_only` on (the default) they are handed the key
+`petkit-local-http`; point its name at an address that refuses the
+connection:
+
+```
+petkit-local-http.iot-as-mqtt.eu-central-1.aliyuncs.com  →  127.0.0.1
+```
+
+With that refused, the device retries for about a minute, then polls the HTTP
+heartbeat for good, and commands reach it there within one poll (~10 s).
+**Without the record the name still resolves**, because Aliyun answers every
+name under that domain, and the device tries to log in to PetKit's real
+broker instead. This applies whether the device was redirected by DNS or
+provisioned over Bluetooth.
 
 **Linux models** (T5/T6/T7/D4H/D4SH/W7H) enforce HTTPS, so a DNS override alone
 will not do; use BLE provisioning, which sidesteps HTTPS entirely. They also

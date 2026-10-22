@@ -124,6 +124,10 @@ class RedactionPolicy:
     #: transport detail. On, a device whose subscription lapsed keeps
     #: recording locally instead of silently stopping.
     local_cvr_window: bool = False
+    #: The `esp32_http_only` option: hand a model that builds its broker name
+    #: from the product key the key that keeps it on HTTP
+    #: (`payloads.http_only_broker`), as our own `dev_iot_device_info` does.
+    esp32_http_only: bool = True
 
 
 # Below the models on purpose: both submodules import them back from here, so

@@ -105,6 +105,13 @@ def test_from_ha_addon_applies_valid_options():
     assert c.log_level == "DEBUG"  # main.py resolves this with getattr(logging, ...)
 
 
+def test_esp32_http_only_option_reaches_the_app_config():
+    assert _from_ha_addon_with({}).to_app_config()["esp32_http_only"] is True
+    c = _from_ha_addon_with({"esp32_http_only": False})
+    assert c.esp32_http_only is False
+    assert c.to_app_config()["esp32_http_only"] is False
+
+
 def test_proxy_and_capture_are_not_add_on_options():
     """They are panel-only now: debugging switches you flip while watching a
     device, not something worth restarting the container for. An options file

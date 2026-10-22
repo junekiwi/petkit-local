@@ -166,6 +166,28 @@ def test_mqtt_credentials_are_replaced_in_both_shapes(payload, dig):
     assert [r.rule for r in result.records] == [RULE_MQTT]
 
 
+@pytest.mark.parametrize("payload,dig", [
+    (ALI, lambda b: b["result"]["ali"]),
+    (FLAT, lambda b: b["result"]),
+])
+def test_proxy_mode_keeps_an_esp32_model_on_http_too(payload, dig):
+    """Rewriting PetKit's reply to the device's own key would send a model
+    that builds its broker name from it straight to Aliyun, so proxy mode
+    hands out the same fixed key our own `dev_iot_device_info` does."""
+    device = Device(device_type="t4", petkit_id=400062421, serial_number="SNT4")
+    body, _ = _run(payload, endpoint="/6/t4/dev_iot_device_info",
+                   policy=_policy(device=device))
+    block = dig(body)
+    assert block["productKey"] == payloads.HTTP_ONLY_PRODUCT_KEY
+    assert block["mqttHost"] == "petkit-local-http.iot-as-mqtt.eu-central-1.aliyuncs.com"
+    assert block["deviceSecret"] == device.mqtt_device_secret
+
+    body, _ = _run(payload, endpoint="/6/t4/dev_iot_device_info",
+                   policy=_policy(device=device, esp32_http_only=False))
+    assert dig(body)["productKey"] == device.mqtt_product_key
+    assert dig(body)["mqttHost"] == MQTT_HOST
+
+
 def test_mqtt_rule_captures_the_real_aliyun_credentials():
     """The only place they can be learned — the ones the device uses are ours."""
     _, result = _run(ALI, endpoint="/6/t5/dev_only_iot_device_info")

@@ -10,6 +10,7 @@ import time
 
 from aiohttp.test_utils import TestClient, TestServer
 
+from petkit_local.devices import payloads
 from petkit_local.devices.base import Device
 from petkit_local.devices.registry import DeviceRegistry
 from petkit_local.http.handlers.heartbeat import IOT_STATUS_GRACE
@@ -424,15 +425,14 @@ async def test_heartbeat_still_delivers_commands_while_clearing_the_flag():
 
 async def test_all_iot_device_info_endpoints_return_ali_wrapped():
     """The cloud returns ``{result: {ali: {...}}}`` on ``dev_iot_device_info``
-    too (confirmed on a D4SH capture). Asserted against a ``d4``: an ESP32
-    model, but not one of the litter boxes answered flat (next test), so it
-    must stay wrapped."""
+    too (confirmed on a D4SH capture), so a ``d4sh`` stays wrapped on every
+    endpoint name. The ESP32 models answered flat are the next test."""
     reg = DeviceRegistry()
     client = await _client(reg)
     try:
-        await client.post("/6/d4/dev_signup", headers=HDR)
+        await client.post("/6/d4sh/dev_signup", headers=HDR)
         for ep in ("dev_iot_device_info", "dev_only_iot_device_info_v2"):
-            r = await client.post(f"/6/d4/{ep}", headers=HDR)
+            r = await client.post(f"/6/d4sh/{ep}", headers=HDR)
             res = (await r.json())["result"]
             assert "ali" in res, f"{ep} should return ali-wrapped"
             ali = res["ali"]
@@ -441,15 +441,15 @@ async def test_all_iot_device_info_endpoints_return_ali_wrapped():
         await client.close()
 
 
-async def test_esp32_litter_boxes_get_the_flat_credential_block():
-    """A T3's cloud reply is flat (issue #35), and a T4 handed the wrapped
-    block loops through signup instead of settling. Only ``t3``/``t4`` are
-    flattened; a next-gen model keeps the wrapped shape."""
+async def test_esp32_models_get_the_flat_credential_block():
+    """A T3's cloud reply is flat (issue #35), and so are a T4's and a D4's
+    (proxied 2026-10-22); a T4 handed the wrapped block loops through signup
+    instead of settling. A next-gen model keeps the wrapped shape."""
     reg = DeviceRegistry()
     client = await _client(reg)
     try:
-        for dt in ("t3", "t4"):
-            hdr = {"X-Device": f"id=10{dt[1]}&sn=SN{dt}"}
+        for n, dt in enumerate(("t3", "t4", "d4")):
+            hdr = {"X-Device": f"id=20{n}&sn=SN{dt}"}
             await client.post(f"/6/{dt}/dev_signup", headers=hdr)
             for ep in ("dev_iot_device_info", "dev_only_iot_device_info_v2"):
                 r = await client.post(f"/6/{dt}/{ep}", headers=hdr)
@@ -457,10 +457,86 @@ async def test_esp32_litter_boxes_get_the_flat_credential_block():
                 assert "ali" not in res, f"{dt} {ep} should be flat"
                 assert res["iotPlatform"] == "ALI"
                 assert res["productKey"] and res["deviceSecret"]
-                assert res["mqttHost"] == "server"
         await client.post("/6/t5/dev_signup", headers=HDR)
         r = await client.post("/6/t5/dev_iot_device_info", headers=HDR)
         assert "ali" in (await r.json())["result"]
+    finally:
+        await client.close()
+
+
+async def test_esp32_models_are_kept_on_http_by_default():
+    """They dial a broker name built from the product key and trust only
+    their own root, so they are handed the fixed key whose name one DNS record
+    points at 127.0.0.1. Never their own key: that name resolves to Aliyun."""
+    reg = DeviceRegistry()
+    client = await _client(reg)
+    try:
+        for n, dt in enumerate(("t3", "t4", "d4")):
+            hdr = {"X-Device": f"id=10{n}&sn=SN{dt}"}
+            await client.post(f"/6/{dt}/dev_signup", headers=hdr)
+            r = await client.post(f"/6/{dt}/dev_iot_device_info", headers=hdr)
+            res = (await r.json())["result"]
+            assert res["productKey"] == payloads.HTTP_ONLY_PRODUCT_KEY
+            assert res["iotInstanceId"] == payloads.HTTP_ONLY_PRODUCT_KEY
+            assert res["mqttHost"] == (
+                "petkit-local-http.iot-as-mqtt.eu-central-1.aliyuncs.com")
+            assert res["deviceSecret"] == reg.get(100 + n).mqtt_device_secret
+    finally:
+        await client.close()
+
+
+async def test_esp32_models_get_their_own_key_and_our_broker_when_option_off():
+    """Off is for a reflashed device whose own broker name is pointed here."""
+    reg = DeviceRegistry()
+    client = await _client(reg, {**CONFIG, "esp32_http_only": False})
+    try:
+        hdr = {"X-Device": "id=104&sn=SNt4"}
+        await client.post("/6/t4/dev_signup", headers=hdr)
+        r = await client.post("/6/t4/dev_iot_device_info", headers=hdr)
+        res = (await r.json())["result"]
+        assert res["productKey"] == reg.get(104).mqtt_product_key
+        assert res["mqttHost"] == "server"
+    finally:
+        await client.close()
+
+
+async def test_next_gen_models_are_never_kept_on_http():
+    """The option only concerns the models that build their broker name; a
+    T5 with a patched `ctrl` reaches our broker under its own key."""
+    reg = DeviceRegistry()
+    client = await _client(reg)
+    try:
+        await client.post("/6/t5/dev_signup", headers=HDR)
+        r = await client.post("/6/t5/dev_only_iot_device_info_v2", headers=HDR)
+        ali = (await r.json())["result"]["ali"]
+        assert ali["productKey"] == reg.get(100).mqtt_product_key
+        assert ali["mqttHost"] == "server"
+    finally:
+        await client.close()
+
+
+async def test_d4_signup_and_device_info_carry_the_cloud_settings_block():
+    """PetKit's replies to two D4s (fw 1.267) carry `factor` and `lightRange`
+    in `settings`, and the signup reply carries the whole block, because that
+    model reads `dev_device_info` only after a settings write."""
+    reg = DeviceRegistry()
+    client = await _client(reg)
+    try:
+        r = await client.post("/6/d4/dev_signup", data=D4_SIGNUP_BODY, headers=FORM)
+        result = (await r.json())["result"]
+        assert result["typeCode"] == 1
+        assert result["multiConfig"] is True
+        assert result["settings"]["factor"] == 10
+        assert result["settings"]["lightRange"] == [0, 1440]
+        r = await client.post("/6/d4/dev_device_info",
+                              data="id=400090690&sn=20241223G11497", headers=FORM)
+        settings = (await r.json())["result"]["settings"]
+        assert settings["factor"] == 10
+        assert settings["lightRange"] == [0, 1440]
+        # A T4's signup reply is unchanged: PetKit's carries no settings.
+        await client.post("/6/t4/dev_signup", headers={"X-Device": "id=104&sn=SNt4"})
+        r = await client.post("/6/t4/dev_signup", headers={"X-Device": "id=104&sn=SNt4"})
+        assert "settings" not in (await r.json())["result"]
     finally:
         await client.close()
 

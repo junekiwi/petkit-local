@@ -134,6 +134,7 @@ def _build_policy(request: web.Request, device):
         block_log_upload=config.get("proxy_block_log_upload", True),
         media_to_real_oss=config.get("proxy_media_real_oss", False),
         local_cvr_window=config.get("proxy_local_cvr_window", False),
+        esp32_http_only=config.get("esp32_http_only", True),
     )
 
 

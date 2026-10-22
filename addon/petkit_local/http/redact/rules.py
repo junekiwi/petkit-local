@@ -269,6 +269,10 @@ def _match_mqtt(node: dict, path: str, policy: RedactionPolicy,
         "deviceSecret": device.mqtt_device_secret,
         "iotInstanceId": device.mqtt_product_key,
     }
+    http_only = payloads.http_only_broker(device, policy.esp32_http_only)
+    if http_only:
+        product_key, ours["mqttHost"] = http_only
+        ours["productKey"] = ours["iotInstanceId"] = product_key
     patched = dict(node)
     original = {}
     for key, value in ours.items():

@@ -98,6 +98,18 @@ DEVICE_TYPES_ALL = DEVICE_TYPES_LITTER | DEVICE_TYPES_FEEDER | DEVICE_TYPES_WATE
 # Only the W7H has WiFi of its own among the fountains.
 DEVICE_TYPES_BLE_ONLY = {"w4", "w5", "ctw2", "ctw3", "k2", "k3"}
 
+# The models whose firmware builds its MQTT broker name from the product key
+# and ignores the `mqttHost` it is handed (`devices/base.py::aliyun_broker_name`),
+# then trusts only the GlobalSign root compiled into it -- so no broker of ours
+# can serve one that has not been reflashed. Seen by DNS on a T4 (1.652) and two
+# D4s (1.267) talking to PetKit's own cloud, 2026-10-22: every MQTT attempt went
+# to the product key's name and was refused with `unknown ca` for any other
+# certificate. Issue #35 reports the same name-building on a T3. With the
+# `esp32_http_only` option (the default) they are handed
+# `payloads.HTTP_ONLY_PRODUCT_KEY` and stay on the HTTP heartbeat. The other
+# ESP32 feeders probably behave alike, but nothing has shown it.
+DEVICE_TYPES_DERIVED_BROKER = {"t3", "t4", "d4"}
+
 DEVICE_TYPES_CAMERA = {"t5", "t6", "t7", "d4h", "d4sh", "w7h"}
 # Embedded-Linux models. Same membership as DEVICE_TYPES_CAMERA today, but a
 # different question: "camera" decides media/STS behaviour, "next gen" decides

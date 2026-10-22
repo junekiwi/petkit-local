@@ -135,6 +135,15 @@ def default_settings(device: Device) -> dict[str, Any]:
             "surplusControl": 0, "surplusStandard": 2,
             "numLimit": 5,
         }
+        if device.device_type == "d4":
+            # PetKit's own `dev_signup` and `dev_device_info` replies to two
+            # Fresh Element Solos (fw 1.267, proxied 2026-10-22) both carry
+            # these, identically on each. `factor` is a device constant, not an
+            # owner setting: what a schedule's `a` and a realtime `amount` are
+            # measured against (`ha/commands.py::_feed`), so a block without
+            # it leaves that to the firmware's guess. `lightRange` is the
+            # indicator light's window, the whole day.
+            base.update({"factor": 10, "lightRange": [0, 1440]})
         if device.is_camera:
             base.update({
                 "camera": 1, "microphone": 1, "night": 1,

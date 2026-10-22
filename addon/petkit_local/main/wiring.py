@@ -98,6 +98,7 @@ def _proxy_policy(app_config: dict[str, Any], device: Device):
         block_ota=app_config.get("proxy_block_ota", True),
         media_to_real_oss=app_config.get("proxy_media_real_oss", False),
         local_cvr_window=app_config.get("proxy_local_cvr_window", False),
+        esp32_http_only=app_config.get("esp32_http_only", True),
     )
 
 

@@ -21,7 +21,9 @@ import logging
 import time
 from typing import TYPE_CHECKING, Any
 
-from petkit_local.devices.base import encode_multi_range, split_bucket_authority
+from petkit_local.devices.base import (
+    aliyun_broker_name, encode_multi_range, split_bucket_authority,
+)
 from petkit_local.devices.defaults import default_settings, multi_config_ranges
 
 # Cloud deviceType per codename, confirmed from STS captures. The cloud
@@ -33,7 +35,7 @@ _DEVICE_TYPE_IDS: dict[str, int] = {
 }
 from petkit_local.devices.state_tables import CONSUMABLE_RECORD_KEY, SPRAY_TOTAL_DAYS
 from petkit_local.utils.coerce import to_float
-from petkit_local.utils.const import DEVICE_LOG_KEY_PREFIX
+from petkit_local.utils.const import DEVICE_LOG_KEY_PREFIX, DEVICE_TYPES_DERIVED_BROKER
 
 if TYPE_CHECKING:  # `devices.ble` imports `devices.registry`, which imports `devices.base`.
     from petkit_local.devices.base import Device
@@ -58,27 +60,39 @@ def to_signup(device: Device) -> dict[str, Any]:
     device's usability as the stake.
 
     The remaining fields are additive, straight from that capture.
+
+    A D4 is answered with its settings block as well, plus `typeCode`, `btMac`
+    and `multiConfig`: PetKit's reply to two Fresh Element Solos carries all
+    four (fw 1.267, proxied 2026-10-22), and that model reads no `dev_device_info`
+    at boot -- only after a settings write -- so signup is where it gets them.
+    The same reply does carry `signupAt`, as an ISO-8601 string.
     """
     ts = int(device.created_at)
-    return {
-        "result": {
-            "id": device.petkit_id,
-            "signupAt": str(ts),
-            "createdAt": ts,
-            "secret": device.signing_secret,
-            "mac": device.mac,
-            "sn": device.serial_number,
-            "timezone": device.timezone_offset,
-            "locale": device.config.get("locale", ""),
-            "shareOpen": 0,
-            "petInTipLimit": 0,
-            "p2pType": 2,
-            "tooManyPets": 0,
-            "frequencyPetTip": 0,
-            "deodorantTip": 0,
-            "purificationTip": 0,
-        }
+    result = {
+        "id": device.petkit_id,
+        "signupAt": str(ts),
+        "createdAt": ts,
+        "secret": device.signing_secret,
+        "mac": device.mac,
+        "sn": device.serial_number,
+        "timezone": device.timezone_offset,
+        "locale": device.config.get("locale", ""),
+        "shareOpen": 0,
+        "petInTipLimit": 0,
+        "p2pType": 2,
+        "tooManyPets": 0,
+        "frequencyPetTip": 0,
+        "deodorantTip": 0,
+        "purificationTip": 0,
     }
+    if device.device_type == "d4":
+        result.update({
+            "btMac": device.config.get("bt_mac", ""),
+            "typeCode": 1,
+            "settings": {**default_settings(device), **device.config.get("settings", {})},
+            "multiConfig": True,
+        })
+    return {"result": result}
 
 
 def to_iot_device_info(device: Device, mqtt_host: str) -> dict[str, Any]:
@@ -102,22 +116,57 @@ def to_iot_device_info(device: Device, mqtt_host: str) -> dict[str, Any]:
     }
 
 
-def to_iot_device_info_flat(device: Device, mqtt_host: str) -> dict[str, Any]:
-    """The FLAT credential block (no `ali` wrapper), for the ESP32 litter boxes.
+#: The product key handed to an ESP32 model kept on HTTP
+#: (`iot_device_info.DERIVED_BROKER_TYPES`, option `esp32_http_only`). That
+#: firmware builds its broker name from the key itself (`aliyun_broker_name`),
+#: so a fixed key makes the name one known string, for a single DNS record to
+#: point at a host that refuses it (127.0.0.1). The refusal is what keeps the
+#: device usable: a T4 and two D4s whose MQTT TLS was refused retried for about
+#: a minute, then polled the HTTP heartbeat for good and took every cloud
+#: command there (proxied, 2026-10-22). Without the record the name still
+#: resolves, because Aliyun answers every `*.iot-as-mqtt.eu-central-1.
+#: aliyuncs.com`, and the device tries PetKit's real broker with credentials it
+#: does not know; what it does after that is unobserved, and is the likeliest
+#: reading of the T4 loop in issue #44. localkit hands out
+#: `noresolv-localkit-io` for the same purpose while it flashes a device.
+HTTP_ONLY_PRODUCT_KEY = "petkit-local-http"
+
+
+def http_only_broker(device: Device, enabled: bool) -> tuple[str, str] | None:
+    """The `(productKey, mqttHost)` that keeps an ESP32 model on HTTP, or None.
+
+    One decision for the two places a device is handed MQTT credentials — our
+    own `dev_iot_device_info` and proxy mode's rewrite of PetKit's — so that
+    proxy mode cannot hand back the device's own key and send it to Aliyun.
+    """
+    if not enabled or device.device_type.lower() not in DEVICE_TYPES_DERIVED_BROKER:
+        return None
+    return HTTP_ONLY_PRODUCT_KEY, aliyun_broker_name(HTTP_ONLY_PRODUCT_KEY)
+
+
+def to_iot_device_info_flat(device: Device, mqtt_host: str,
+                            product_key: str | None = None) -> dict[str, Any]:
+    """The FLAT credential block (no `ali` wrapper), for the ESP32 models.
 
     The same fields as `to_iot_device_info`, un-nested. PetKit's cloud answers
-    a T3 this way on `dev_iot_device_info`, and a T4 handed the `ali`-wrapped
-    block never gets past signup; a D4SH on the same endpoint is answered
-    wrapped. Which models get it is `iot_device_info.FLAT_CREDENTIAL_TYPES`.
+    a T3 this way on `dev_iot_device_info`, and a T4 and a D4 too (both
+    proxied, 2026-10-22); a T4 handed the `ali`-wrapped block never gets past
+    signup, and a D4SH on the same endpoint is answered wrapped. Which models
+    get it is `iot_device_info.FLAT_CREDENTIAL_TYPES`.
+
+    `product_key` replaces the device's own for the HTTP-only mode
+    (`HTTP_ONLY_PRODUCT_KEY`); `mqtt_host` should then be the name the device
+    builds from it, which is the one it actually dials.
     """
+    product_key = product_key or device.mqtt_product_key
     return {
         "result": {
             "id": device.petkit_id,
             "deviceName": device.mqtt_device_name,
             "deviceSecret": device.mqtt_device_secret,
             "iotPlatform": "ALI",
-            "iotInstanceId": device.mqtt_product_key,
-            "productKey": device.mqtt_product_key,
+            "iotInstanceId": product_key,
+            "productKey": product_key,
             "mqttHost": mqtt_host or device.aliyun_mqtt_host,
             "createdAt": int(device.created_at * 1000),
             "type": 1,
