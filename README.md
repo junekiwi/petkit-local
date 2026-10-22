@@ -1,5 +1,23 @@
 # PetKit Local
 
+> [!NOTE]
+> **This is a fork** of [alex-so-3/petkit-local](https://github.com/alex-so-3/petkit-local), made
+> to run a Pura Max (T4) and Fresh Element Solos (D4) locally. It publishes its own image,
+> `ghcr.io/junekiwi/petkit-local`, and the add-on repository URL below points here. What it
+> changes on top of upstream 2.1.0:
+>
+> - **The T3, T4 and D4 stay on HTTP.** Their firmware builds its MQTT broker name from the
+>   product key and trusts only PetKit's own root, so no local broker can serve them unflashed.
+>   They now get a fixed key and need one DNS record (see [DOCS](addon/DOCS.md#networking)).
+> - **A D4 is answered the way PetKit answers it**: flat MQTT credentials, and its settings
+>   block (with `factor` and `lightRange`) at signup.
+> - **Upstream pull requests merged here**: flat credentials for T3/T4 (#42), Pura Air readings
+>   from an HTTP parent (#28), a T4's visit count (#32), single-hopper feed schedules (#29).
+>
+> Details and evidence are in the [changelog](addon/CHANGELOG.md); the full diff is
+> [upstream...fork](https://github.com/alex-so-3/petkit-local/compare/main...junekiwi:petkit-local:main).
+> Issues about these changes belong here, not upstream.
+
 PetKit's devices route everything through PetKit's servers: the app, the history, the notifications,
 and the video from inside your home. This is a stand-in for those servers that runs on your own
 machine. Your device connects to it the same way it connected to them and behaves the same, except
@@ -173,7 +191,7 @@ talk you out of it.
 **Settings → Apps → Install app → ⋮ → Repositories**, add:
 
 ```
-https://github.com/alex-so-3/petkit-local
+https://github.com/junekiwi/petkit-local
 ```
 
 > Recent Home Assistant releases renamed **Add-ons** to **Apps** in the interface. If your menu still

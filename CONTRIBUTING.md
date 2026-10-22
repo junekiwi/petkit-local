@@ -97,7 +97,7 @@ file; `CLAUDE.md` is a two-line stub that imports it.)
 ## Releasing
 
 Images are published to GHCR by `.github/workflows/publish.yml` as a single
-multi-architecture package, `ghcr.io/alex-so-3/petkit-local`. That is what the
+multi-architecture package, `ghcr.io/junekiwi/petkit-local`. That is what the
 add-on documentation asks for — a per-architecture name with `{arch}` in it is
 described there as a compatibility fallback — and it is also the only shape
 docker-compose can use, since Compose has no `{arch}` substitution.

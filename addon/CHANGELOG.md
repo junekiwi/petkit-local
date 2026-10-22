@@ -1,6 +1,11 @@
 # Changelog
 
-## Unreleased
+## 2.1.1 — 2026-10-22
+
+The first release of the junekiwi fork: upstream 2.1.0 plus the fixes below,
+for a Pura Max (T4) and Fresh Element Solos (D4) kept on HTTP. Images are
+published as `ghcr.io/junekiwi/petkit-local`.
+
 
 - **The T3, T4 and D4 are kept on HTTP, deliberately.** Their firmware ignores
   the `mqttHost` it is handed and dials a broker name built from its product
