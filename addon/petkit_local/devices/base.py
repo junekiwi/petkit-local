@@ -192,6 +192,12 @@ class Device:
     #: milliseconds; `http/handlers/heartbeat.py::note_iot_status` uses it to
     #: tell a lagging report from a real loss.
     mqtt_connected_at: float = 0.0
+    #: The last `timestamp` a heartbeat handed this device with a command. The
+    #: firmware drops an entry whose stamp is not greater than the last one it
+    #: consumed, and a batch is stamped one second apart from now, so the next
+    #: poll must start after this rather than at its own now
+    #: (`http/handlers/heartbeat.py`). Live state, like the rest of this block.
+    last_heartbeat_stamp: int = 0
 
     def __post_init__(self) -> None:
         """Derive the MQTT device name when the caller did not supply one."""

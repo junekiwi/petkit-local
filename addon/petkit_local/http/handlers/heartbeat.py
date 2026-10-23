@@ -252,12 +252,19 @@ async def handle_heartbeat(request: web.Request) -> web.Response:
             # ("expire more then 60s") — an UNSIGNED compare, so a stamp in the
             # future expires instantly. Advancing both together is the only
             # spacing that satisfies both rules.
-            for offset, cmd in enumerate(cmds):
+            #
+            # The first rule spans polls too: a batch of five stamped now..now+4
+            # and a command on the next poll two seconds later, stamped now+2,
+            # would be dropped silently while `wait_for_heartbeat` saw the queue
+            # drain. So a batch starts after the last stamp handed out.
+            start = max(ts, device.last_heartbeat_stamp + 1)
+            for offset, cmd in enumerate(cmds, start=start - ts):
                 result.append({
                     "time": ts_ms + offset * 1000,
                     "timestamp": ts + offset,
                     "content": _to_heartbeat_content(cmd),
                 })
+            device.last_heartbeat_stamp = result[-1]["timestamp"]
             log.info("Heartbeat %s (id=%d): delivering %d commands",
                      device.device_type, device.petkit_id, len(cmds))
             return web.json_response({"result": result})

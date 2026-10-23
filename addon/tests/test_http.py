@@ -358,6 +358,33 @@ async def test_two_commands_in_one_answer_both_survive_the_device_s_filters():
         await client.close()
 
 
+async def test_the_next_poll_is_stamped_after_the_last_batch():
+    """The "greater than the last one consumed" rule spans polls: a batch
+    stamped now..now+4 followed within seconds by one command stamped at its
+    own now would be dropped by the device, silently, after the queue had
+    already drained."""
+    reg = DeviceRegistry()
+    client = await _client(reg)
+    try:
+        await client.post("/6/t5/dev_signup", headers=HDR)
+        dev = reg.get(100)
+        seen = []
+        for batch in (5, 1, 2):
+            for _ in range(batch):
+                dev.command_queue.append({"msgType": 2, "payload": {"start_action": 0}})
+            result = (await (await client.get("/6/poll/t5/heartbeat",
+                                              headers=HDR)).json())["result"]
+            assert len(result) == batch
+            seen += result
+        stamps = [e["timestamp"] for e in seen]
+        assert stamps == sorted(set(stamps)), "stamps must strictly increase"
+        for entry in seen:
+            age = entry["time"] // 1000 - entry["timestamp"]
+            assert 0 <= age < 61, entry
+    finally:
+        await client.close()
+
+
 async def test_heartbeat_clears_mqtt_flag_when_device_reports_no_session():
     """`mqtt_connected` is set by a successful CONNECT and used to pick a
     transport; publishing to a topic nobody is subscribed to raises nothing, so

@@ -150,6 +150,13 @@
   a single `ir`. They are removed from Home Assistant, not just left
   unannounced. A D4SH keeps its IR readings.
 
+- **A command sent right after a batch is no longer dropped.** A device on
+  the HTTP heartbeat ignores a command stamped no later than the last one it
+  ran, and a batch of commands is stamped a second apart into the next few
+  seconds. A command on the following poll was stamped at that poll's own
+  time, could fall inside the batch's range, and was dropped by the device
+  while reported delivered. Each poll now starts after the last stamp sent.
+
 ## 2.1.4 — 2026-10-23
 
 - **A litter box without a camera names the cat by weight.** A T4 cannot
