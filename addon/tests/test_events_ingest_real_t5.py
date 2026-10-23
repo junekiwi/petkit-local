@@ -8,10 +8,8 @@ docstring and CLAUDE.md's "Known limitations" for what's confirmed vs. still
 inferred.
 """
 from dataclasses import dataclass
-from pathlib import Path
 
 from petkit_local.events import ingest
-from petkit_local.events.store import EventStore
 
 REAL_EVENT_REPORTS = [
     # "9": mid-visit weight sample
@@ -124,59 +122,55 @@ def test_an_empty_score_info_reports_no_identity():
     assert row["parent_event"] == "3_10000001_1784741818"
 
 
-async def test_upsert_event_no_longer_collapses_sibling_reports_in_one_session():
+async def test_upsert_event_no_longer_collapses_sibling_reports_in_one_session(event_store):
     """The actual bug: 6 real reports collapsing to 3 stored rows because
     "9"+"10" (and "3"+"8", and "17"+"3") shared one event_id."""
-    import tempfile
-    with tempfile.TemporaryDirectory() as tmp:
-        store = EventStore(Path(tmp) / "petkit.db")
-        dev = _Dev()
-        for rec in REAL_EVENT_REPORTS:
-            row = ingest.from_event_report(dev, _form(rec))
-            row.pop("_state", None)
-            row.pop("_content", None)
-            await store.upsert_event(row)
+    store = event_store
+    dev = _Dev()
+    for rec in REAL_EVENT_REPORTS:
+        row = ingest.from_event_report(dev, _form(rec))
+        row.pop("_state", None)
+        row.pop("_content", None)
+        await store.upsert_event(row)
 
-        rows = await store.query_timeline(device_id=dev.petkit_id, limit=100)
-        assert len(rows) == len(REAL_EVENT_REPORTS), \
-            "every distinct event_type report must survive, even when event_id repeats"
-        event_types_stored = sorted(r["event_type"] for r in rows)
-        assert event_types_stored == ["10", "17", "3", "3", "8", "9"]
+    rows = await store.query_timeline(device_id=dev.petkit_id, limit=100)
+    assert len(rows) == len(REAL_EVENT_REPORTS), \
+        "every distinct event_type report must survive, even when event_id repeats"
+    event_types_stored = sorted(r["event_type"] for r in rows)
+    assert event_types_stored == ["10", "17", "3", "3", "8", "9"]
 
 
-async def test_group_sessions_from_real_capture_forms_one_visit_with_cleaning_sub_events():
-    import tempfile
-    with tempfile.TemporaryDirectory() as tmp:
-        store = EventStore(Path(tmp) / "petkit.db")
-        dev = _Dev()
-        for rec in REAL_EVENT_REPORTS:
-            row = ingest.from_event_report(dev, _form(rec))
-            row.pop("_state", None)
-            row.pop("_content", None)
-            await store.upsert_event(row)
+async def test_group_sessions_from_real_capture_forms_one_visit_with_cleaning_sub_events(event_store):
+    store = event_store
+    dev = _Dev()
+    for rec in REAL_EVENT_REPORTS:
+        row = ingest.from_event_report(dev, _form(rec))
+        row.pop("_state", None)
+        row.pop("_content", None)
+        await store.upsert_event(row)
 
-        rows = await store.query_timeline(device_id=dev.petkit_id, limit=100)
-        sessions = ingest.group_sessions(rows)
+    rows = await store.query_timeline(device_id=dev.petkit_id, limit=100)
+    sessions = ingest.group_sessions(rows)
 
-        visits = [s for s in sessions if s["kind"] == "visit"]
-        assert len(visits) == 1, f"expected exactly one visit session, got {len(visits)}: {sessions}"
-        visit = visits[0]
-        assert visit["event_type"] == "10"  # anchored on the visit-summary report
-        assert visit["duration_sec"] == 17.0  # time_out(1784736158) - time_in(1784736141)
-        assert visit["weight"] == 2128.0
+    visits = [s for s in sessions if s["kind"] == "visit"]
+    assert len(visits) == 1, f"expected exactly one visit session, got {len(visits)}: {sessions}"
+    visit = visits[0]
+    assert visit["event_type"] == "10"  # anchored on the visit-summary report
+    assert visit["duration_sec"] == 17.0  # time_out(1784736158) - time_in(1784736141)
+    assert visit["weight"] == 2128.0
 
-        # The four cleaning-family reports (3, 8, 17, 3) attach as sub-events
-        # rather than standalone rows, since they're within the sub-event time
-        # window -- and so does the "9" weight sample. "9" shares the visit's
-        # event_id with the "10" that anchors the card, and group_sessions used
-        # to mark every member of the anchor's episode used while rendering
-        # only the anchor, which silently discarded all 23 weight samples in
-        # the reference corpus.
-        sub_event_types = sorted(e["event_type"] for e in visit["sub_events"])
-        assert sub_event_types == ["17", "3", "3", "8", "9"]
+    # The four cleaning-family reports (3, 8, 17, 3) attach as sub-events
+    # rather than standalone rows, since they're within the sub-event time
+    # window -- and so does the "9" weight sample. "9" shares the visit's
+    # event_id with the "10" that anchors the card, and group_sessions used
+    # to mark every member of the anchor's episode used while rendering
+    # only the anchor, which silently discarded all 23 weight samples in
+    # the reference corpus.
+    sub_event_types = sorted(e["event_type"] for e in visit["sub_events"])
+    assert sub_event_types == ["17", "3", "3", "8", "9"]
 
-        standalone = [s for s in sessions if s["kind"] == "event"]
-        assert standalone == [], f"nothing should be left standalone: {standalone}"
+    standalone = [s for s in sessions if s["kind"] == "event"]
+    assert standalone == [], f"nothing should be left standalone: {standalone}"
 
 
 def test_resolve_category_from_module_type_real_values():
@@ -248,50 +242,42 @@ def test_resolve_category_unknown_module_type_is_empty_not_crash():
     assert row["category"] == ""
 
 
-async def test_backfill_repairs_stale_event_kind_and_parent_link():
+async def test_backfill_repairs_stale_event_kind_and_parent_link(event_store):
     """Rows stored before a code was recognised keep a stale event_kind, so
     they never attach to their visit. The backfill must repair them from the
     untouched content_json."""
     import json
-    import tempfile
-    from pathlib import Path
-    from petkit_local.events.store import EventStore
 
-    with tempfile.TemporaryDirectory() as tmp:
-        store = EventStore(Path(tmp) / "petkit.db")
-        # as an older version would have written it: type "5" unrecognised,
-        # no parent_event column value, related_event lost
-        await store.upsert_event({
-            "event_uid": "10000001_1784737195", "related_event": None,
-            "device_id": 1, "event_type": "5", "event_kind": "other", "ts": 100.0,
-            "content_json": json.dumps({"relate_event": "visitA", "clean_weight": 0}),
-        })
-        fixed = await ingest.backfill_event_rows(store)
-        assert fixed == 1
+    store = event_store
+    # as an older version would have written it: type "5" unrecognised,
+    # no parent_event column value, related_event lost
+    await store.upsert_event({
+        "event_uid": "10000001_1784737195", "related_event": None,
+        "device_id": 1, "event_type": "5", "event_kind": "other", "ts": 100.0,
+        "content_json": json.dumps({"relate_event": "visitA", "clean_weight": 0}),
+    })
+    fixed = await ingest.backfill_event_rows(store)
+    assert fixed == 1
 
-        row = (await store.query_timeline(device_id=1))[0]
-        assert row["event_kind"] == "cleaning"
-        assert row["parent_event"] == "visitA"
-        assert row["related_event"] == "10000001_1784737195"
+    row = (await store.query_timeline(device_id=1))[0]
+    assert row["event_kind"] == "cleaning"
+    assert row["parent_event"] == "visitA"
+    assert row["related_event"] == "10000001_1784737195"
 
-        # idempotent — a second run changes nothing
-        assert await ingest.backfill_event_rows(store) == 0
+    # idempotent — a second run changes nothing
+    assert await ingest.backfill_event_rows(store) == 0
 
 
-async def test_backfill_leaves_correct_rows_untouched():
+async def test_backfill_leaves_correct_rows_untouched(event_store):
     import json
-    import tempfile
-    from pathlib import Path
-    from petkit_local.events.store import EventStore
 
-    with tempfile.TemporaryDirectory() as tmp:
-        store = EventStore(Path(tmp) / "petkit.db")
-        await store.upsert_event({
-            "event_uid": "e:10", "related_event": "e", "parent_event": None,
-            "device_id": 1, "event_type": "10", "event_kind": "toilet_visit", "ts": 1.0,
-            "content_json": json.dumps({"pet_weight": 2000}),
-        })
-        assert await ingest.backfill_event_rows(store) == 0
+    store = event_store
+    await store.upsert_event({
+        "event_uid": "e:10", "related_event": "e", "parent_event": None,
+        "device_id": 1, "event_type": "10", "event_kind": "toilet_visit", "ts": 1.0,
+        "content_json": json.dumps({"pet_weight": 2000}),
+    })
+    assert await ingest.backfill_event_rows(store) == 0
 
 
 # --- "appeared" motion events (types 20/24), captured 2026-07-22 ------------

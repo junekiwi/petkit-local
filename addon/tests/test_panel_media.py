@@ -10,6 +10,8 @@ from pathlib import Path
 
 from aiohttp.test_utils import TestClient, TestServer, make_mocked_request
 
+import pytest
+
 from petkit_local.ai.pets import PetRegistry
 from petkit_local.devices.registry import DeviceRegistry
 from petkit_local.events.store import MAX_FACES_PER_PET, EventStore
@@ -49,11 +51,25 @@ def _midday() -> float:
                                   microsecond=0).timestamp()
 
 
+#: Every store this module's helpers opened, drained by the autouse fixture
+#: below. A store holds an aiosqlite pool bound to the test's own event loop,
+#: and one left open fails later, in its worker thread, against a closed loop.
+_OPEN_STORES: list[EventStore] = []
+
+
+@pytest.fixture(autouse=True)
+async def _close_stores():
+    yield
+    while _OPEN_STORES:
+        await _OPEN_STORES.pop().close()
+
+
 def _panel(tmp, device_type="t5"):
     reg = DeviceRegistry()
     device = reg.get_or_create(petkit_id=1, device_type=device_type, serial_number="SN")
     hub = EventHub()
     store = EventStore(Path(tmp) / "petkit.db")
+    _OPEN_STORES.append(store)
     retention = RetentionConfig()
     pet_registry = PetRegistry(store, str(Path(tmp) / "faces"))
     ha_publisher = FakeHAPublisher()

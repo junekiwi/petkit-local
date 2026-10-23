@@ -4,6 +4,8 @@ from pathlib import Path
 
 from aiohttp.test_utils import TestClient, TestServer
 
+import pytest
+
 from petkit_local.ai.pets import PetRegistry
 from petkit_local.devices.registry import DeviceRegistry
 from petkit_local.events.store import EventStore
@@ -21,10 +23,24 @@ CONFIG = {
 JPEG_BYTES = b"\xff\xd8\xff\xe0" + b"A" * 60
 
 
+#: Every store this module's helpers opened, drained by the autouse fixture
+#: below. A store holds an aiosqlite pool bound to the test's own event loop,
+#: and one left open fails later, in its worker thread, against a closed loop.
+_OPEN_STORES: list[EventStore] = []
+
+
+@pytest.fixture(autouse=True)
+async def _close_stores():
+    yield
+    while _OPEN_STORES:
+        await _OPEN_STORES.pop().close()
+
+
 async def _client(tmp, device_type="t5"):
     reg = DeviceRegistry()
     device = reg.get_or_create(petkit_id=100, device_type=device_type, serial_number="SN100")
     store = EventStore(Path(tmp) / "petkit.db")
+    _OPEN_STORES.append(store)
     pet_registry = PetRegistry(store, str(Path(tmp) / "faces"))
 
     config = dict(CONFIG)

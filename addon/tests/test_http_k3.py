@@ -16,6 +16,8 @@ from urllib.parse import urlencode
 
 from aiohttp.test_utils import TestClient, TestServer
 
+import pytest
+
 from petkit_local.devices.ble import BLERegistry
 from petkit_local.devices.registry import DeviceRegistry
 from petkit_local.events.store import EventStore
@@ -67,11 +69,25 @@ def _setup():
     return reg, ble, _FakePublisher()
 
 
+#: Every store this module's helpers opened, drained by the autouse fixture
+#: below. A store holds an aiosqlite pool bound to the test's own event loop,
+#: and one left open fails later, in its worker thread, against a closed loop.
+_OPEN_STORES: list[EventStore] = []
+
+
+@pytest.fixture(autouse=True)
+async def _close_stores():
+    yield
+    while _OPEN_STORES:
+        await _OPEN_STORES.pop().close()
+
+
 async def _client(reg, ble, pub) -> TestClient:
     app = create_app(reg, dict(CONFIG))
     app["ble_registry"] = ble
     app["ha_publisher"] = pub
-    app["event_store"] = EventStore(":memory:")
+    app["event_store"] = store = EventStore(":memory:")
+    _OPEN_STORES.append(store)
     # Mirror wiring.py: the HTTP handler treats a missing hook as no-op, so
     # installing exactly the same closure keeps behaviour production-shaped.
     async def on_state_report(device, body):

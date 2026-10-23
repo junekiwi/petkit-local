@@ -49,7 +49,10 @@ async def test_update_event_fields_commits_without_a_transaction(event_store: Ev
     await event_store.close()
 
     reopened = EventStore(event_store._path)
-    assert (await reopened.get_event(eid))["event_kind"] == "cleaning"
+    try:
+        assert (await reopened.get_event(eid))["event_kind"] == "cleaning"
+    finally:
+        await reopened.close()
 
 
 async def test_transaction_batches_writes_into_one_commit(event_store: EventStore):

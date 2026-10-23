@@ -9,6 +9,8 @@ from pathlib import Path
 
 from aiohttp.test_utils import TestClient, TestServer
 
+import pytest
+
 from petkit_local.ai.pets import PetRegistry
 from petkit_local.devices.registry import DeviceRegistry
 from petkit_local.events.store import EventStore
@@ -43,12 +45,26 @@ def _stage_raw(raw_root: str, rel: str) -> None:
     full.write_bytes(b"\xff\xd8\xff\xe0" + b"A" * 60)
 
 
+#: Every store this module's helpers opened, drained by the autouse fixture
+#: below. A store holds an aiosqlite pool bound to the test's own event loop,
+#: and one left open fails later, in its worker thread, against a closed loop.
+_OPEN_STORES: list[EventStore] = []
+
+
+@pytest.fixture(autouse=True)
+async def _close_stores():
+    yield
+    while _OPEN_STORES:
+        await _OPEN_STORES.pop().close()
+
+
 async def _client(tmp, config=None, capabilities=None):
     reg = DeviceRegistry()
     device = reg.get_or_create(petkit_id=100, device_type="t5", serial_number="SN100")
     if capabilities is not None:
         device.config["capabilities"] = capabilities
     store = EventStore(Path(tmp) / "petkit.db")
+    _OPEN_STORES.append(store)
     hub = EventHub()
 
     app = create_app(reg, config or CONFIG)
@@ -125,6 +141,7 @@ async def test_event_report_with_pet_id_publishes_pet_discovery_and_state():
         reg = DeviceRegistry()
         reg.get_or_create(petkit_id=100, device_type="t5", serial_number="SN100")
         store = EventStore(Path(tmp) / "petkit.db")
+        _OPEN_STORES.append(store)
         pet_registry = PetRegistry(store, str(Path(tmp) / "faces"))
         pet = await pet_registry.create("Mruczek")
         fake_pub = _FakePetPublisher()
