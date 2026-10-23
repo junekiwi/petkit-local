@@ -26,6 +26,15 @@ def test_the_urls_are_built_from_the_reported_ip():
     assert urls["sub_flv"] == "http://192.0.2.10/sub.flv?audio=1"
 
 
+def test_a_d4h_is_offered_main_ts_instead_of_main_flv():
+    """`main.flv` crashes a D4H's tserver (upstream issue #38). Its `main.ts`
+    is stable and carries real audio, unlike the T5's."""
+    d = _t5()
+    d.device_type = "d4h"
+    assert stream_urls(d) == {"ts": "http://192.0.2.10/main.ts?audio=1",
+                              "sub_flv": "http://192.0.2.10/sub.flv?audio=1"}
+
+
 def test_every_url_asks_for_audio_explicitly():
     """`audio` is not optional: `sub.flv` with no query resets the connection.
 

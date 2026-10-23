@@ -26,8 +26,8 @@ def _registry(*devices):
     return reg
 
 
-def _cam(petkit_id=1, ip="192.0.2.10", available=True):
-    d = Device(device_type="t5", petkit_id=petkit_id, serial_number=f"SN{petkit_id}")
+def _cam(petkit_id=1, ip="192.0.2.10", available=True, device_type="t5"):
+    d = Device(device_type=device_type, petkit_id=petkit_id, serial_number=f"SN{petkit_id}")
     if ip:
         d.state["ip"] = ip
     if available:
@@ -53,6 +53,13 @@ def test_a_stream_per_confirmed_camera(tmp_path):
         "1": "http://192.0.2.10/main.flv?audio=1",
         "2": "http://192.0.2.11/main.flv?audio=1",
     }
+
+
+def test_a_d4h_is_republished_from_main_ts_never_main_flv(tmp_path):
+    """A D4H's `main.flv` overflows tserver's static FLV buffer and kills it
+    until a power cycle (upstream issue #38); its `main.ts` is stable."""
+    s = _sidecar(_registry(_cam(1, device_type="d4h")), tmp_path)
+    assert s.desired_streams() == {"1": "http://192.0.2.10/main.ts?audio=1"}
 
 
 def test_the_stream_name_is_the_petkit_id():
@@ -99,6 +106,26 @@ async def test_the_probe_accepts_an_flv_stream():
     client, addr = await _serving(g.FLV_SIGNATURE + b"\x00" * 64)
     try:
         assert await g.probe_stream(addr) is True
+    finally:
+        await client.close()
+
+
+async def test_the_probe_reads_the_sub_stream():
+    """The probe runs on a timer, so it must never be the request that kills
+    a D4H's tserver: it reads `sub.flv`, which every model serves."""
+    paths = []
+
+    async def handler(request):
+        paths.append(request.path_qs)
+        return web.Response(body=g.FLV_SIGNATURE)
+
+    app = web.Application()
+    app.router.add_route("*", "/{path:.*}", handler)
+    client = TestClient(TestServer(app))
+    await client.start_server()
+    try:
+        assert await g.probe_stream(f"127.0.0.1:{client.server.port}") is True
+        assert paths == ["/sub.flv?audio=1"]
     finally:
         await client.close()
 

@@ -48,7 +48,7 @@ from typing import TYPE_CHECKING, Any
 
 import aiohttp
 
-from petkit_local.patchers.camera import STREAM_PATHS, stream_urls
+from petkit_local.patchers.camera import PROBE_PATH, main_stream_path, stream_urls
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from petkit_local.devices.base import Device
@@ -145,12 +145,14 @@ async def probe_stream(ip: str, timeout: float = PROBE_TIMEOUT) -> bool:
     connection is the failure `patchers/camera.py::stream_urls` already warns
     about — it reads as a broken camera rather than an unapplied patch.
 
-    An open port is not enough, so this requires the FLV signature. Never raises:
-    every failure is "no stream", which is the safe answer.
+    An open port is not enough, so this requires the FLV signature. It reads
+    the sub stream (`PROBE_PATH`), never the main one: a D4H's `main.flv`
+    crashes tserver for good, and this runs on a timer. Never raises: every
+    failure is "no stream", which is the safe answer.
     """
     if not ip:
         return False
-    url = f"http://{ip}/{STREAM_PATHS['flv']}"
+    url = f"http://{ip}/{PROBE_PATH}"
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(url, timeout=aiohttp.ClientTimeout(total=timeout)) as resp:
@@ -239,12 +241,12 @@ class Go2rtc:
         return rtsp_url(device, host) if host else ""
 
     def desired_streams(self) -> dict[str, str]:
-        """`{stream name: device FLV url}` for every confirmed camera."""
+        """`{stream name: device stream url}` for every confirmed camera."""
         streams = {}
         for device in self._registry.all():
             ip = (device.state or {}).get("ip", "")
             if ip and device.state.get(STREAM_AVAILABLE):
-                streams[stream_name(device)] = f"http://{ip}/{STREAM_PATHS['flv']}"
+                streams[stream_name(device)] = f"http://{ip}/{main_stream_path(device)}"
         return streams
 
     def wanted(self) -> bool:

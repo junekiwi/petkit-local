@@ -131,6 +131,13 @@
   now replace ours with both kept, and anything that is not a schedule is
   ignored.
 
+- **A D4H's camera no longer crashes when it is watched** (upstream issue
+  #38). Its `main.flv` overflows a fixed 200 KB buffer in the device's stream
+  server, which then stays dead until the feeder is power-cycled. A D4H is now
+  republished from `main.ts`, which does not use that buffer and carries
+  audio, and the periodic stream check reads every model's `sub.flv` rather
+  than its main stream.
+
 ## 2.1.4 — 2026-10-23
 
 - **A litter box without a camera names the cat by weight.** A T4 cannot

@@ -56,6 +56,36 @@ STREAM_PATHS = {
     "sub_flv": "sub.flv?audio=1",
 }
 
+#: Per model, what replaces `STREAM_PATHS`; the first entry is the one go2rtc
+#: republishes. A D4H (YumShare Solo 2, fw 813) crashes tserver on `main.flv`
+#: (upstream issue #38): tserver packs FLV tags into a static 200 KB buffer
+#: with no bounds check, the D4H's main channel is 1728x1080 with ~204 KB
+#: keyframes, and the SIGSEGV is final because nothing respawns tserver -- the
+#: camera stays dead until a power cycle. Its `main.ts` does not use that
+#: buffer and, unlike the T5's, carries real 16 kHz mono AAC: it ran for over a
+#: day through go2rtc, reconnects included. Its 576x360 `sub.flv` is stable.
+MODEL_STREAM_PATHS = {
+    "d4h": {
+        "ts": "main.ts?audio=1",
+        "sub_flv": "sub.flv?audio=1",
+    },
+}
+
+#: What `media/go2rtc.py::probe_stream` reads. It tests for the FLV signature,
+#: so it has to be an FLV path, and `sub` is the one every model serves
+#: without falling over.
+PROBE_PATH = STREAM_PATHS["sub_flv"]
+
+
+def stream_paths(device: Device) -> dict[str, str]:
+    """`STREAM_PATHS`, or this model's replacement for them."""
+    return MODEL_STREAM_PATHS.get(device.device_type.lower(), STREAM_PATHS)
+
+
+def main_stream_path(device: Device) -> str:
+    """The full-resolution path, the one go2rtc republishes."""
+    return next(iter(stream_paths(device).values()))
+
 
 def stream_urls(device: Device) -> dict[str, str]:
     """This device's local stream URLs, or `{}` when they would not answer.
@@ -75,7 +105,7 @@ def stream_urls(device: Device) -> dict[str, str]:
     ip = (device.state or {}).get("ip", "")
     if not ip or not (device.state or {}).get("streamAvailable"):
         return {}
-    return {name: f"http://{ip}/{path}" for name, path in STREAM_PATHS.items()}
+    return {name: f"http://{ip}/{path}" for name, path in stream_paths(device).items()}
 
 
 PATCHER_INFO = {
