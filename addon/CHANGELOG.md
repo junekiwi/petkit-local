@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.1.4 — 2026-10-23
+
+- **A litter box without a camera names the cat by weight.** A T4 cannot
+  recognise a pet, and PetKit's cloud matched its visits by weight on its own
+  side. A visit summary that names no pet we can prove now goes to the pet of
+  nearest weight (a pet's `weight`, in kg), if it is within 15% of that weight
+  (500 g at least) and no other pet is within 300 g of being as near; anything
+  else stays unnamed rather than guessed. Each pet's own device then fills
+  from its visits, as on the camera models.
+- **Last Pet**, a new sensor on every litter box: the pet the last visit was
+  credited to, by the device's own recognition or by weight. A visit nobody
+  could name clears it.
+
 ## 2.1.3 — 2026-10-23
 
 - **Food Low reads the right way round** (Nikola Milojević, upstream PR #27).
