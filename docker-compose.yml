@@ -13,7 +13,7 @@
 #
 #   cp .env.example .env && $EDITOR .env
 #
-# Nothing else is required.
+# Nothing else is required, though you will want the timezone in there too.
 
 services:
   petkit-local:
@@ -40,6 +40,13 @@ services:
     # build: ./addon
     container_name: petkit-local
     restart: unless-stopped
+
+    environment:
+      # Your timezone, from `.env`. Days are cut at local midnight — Times
+      # Used, the Timeline's "today" — and a container has no timezone of its
+      # own, so without this it runs on UTC and starts each day hours early or
+      # late. The add-on is given one by the Supervisor.
+      - TZ=${TZ:-UTC}
 
     ports:
       # Device HTTP API.

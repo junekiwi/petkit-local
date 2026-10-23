@@ -157,6 +157,11 @@
   time, could fall inside the batch's range, and was dropped by the device
   while reported delivered. Each poll now starts after the last stamp sent.
 
+- **Docker: days start at local midnight** (upstream issue #7). The compose
+  container had no timezone, so it ran on UTC: Times Used reset, and the
+  Timeline's "today" began, hours off midnight. Set `TZ` in `.env` (see
+  `.env.example`); unset, it stays UTC as before. The add-on is unaffected.
+
 ## 2.1.4 — 2026-10-23
 
 - **A litter box without a camera names the cat by weight.** A T4 cannot
