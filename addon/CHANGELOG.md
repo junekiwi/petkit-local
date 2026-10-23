@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+- **Home Assistant event entities fire** (shinn-y, upstream PR #26). HA reads
+  an MQTT event's rendered payload as a JSON object carrying `event_type`, and
+  discovery templated the bare string out of it, so every event was rejected
+  and every event entity sat at unknown. The payload is now passed through,
+  its other keys become the event's attributes, and those attributes are the
+  decoded `content` with the transport envelope stripped, never the raw MQTT
+  `params` with the device's signed `XDevice` in them. Each entity's
+  `event_types` is derived from the codes table, so a newly mapped event
+  cannot be dropped for being undeclared.
+- **Scheduled feeds fire at the right local time** (Balint Toth, upstream PR
+  #30). The firmware sets its clock's timezone from the `time` of
+  `dev_state_report`, which was always sent at `+0000`, so a UTC+2 feeder ran
+  every scheduled meal two hours late. It is now sent at the device's own
+  offset.
+- **The schedule editor's weekday toggles work on a feeder, and typing a time
+  no longer jumps** (Balint Toth, upstream PR #31). A feeder group keeps its
+  days in `re`, and a toggle wrote a `repeats` key the device never reads. A
+  time field whose minute was 00 repainted the card after the first digit of
+  the hour, so 12 was stored as 01.
+
 - **The W7H fountain's controls now match the official app** (AlexMorbo,
   upstream PR #39), checked against a capture of PetKit's app driving a real
   W7H (firmware 456) on 2026-10-04, every screen of it. The protocol facts are
