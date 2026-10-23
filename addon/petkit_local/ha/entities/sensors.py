@@ -69,6 +69,11 @@ LITTER_SENSORS = [
     EntityDef(component="sensor", key="pet_weight", name="Pet Weight",
               value_path="state.petWeight", device_class="weight", unit="g",
               icon="mdi:scale-bathroom", entity_category="diagnostic"),
+    # The pet the last visit was credited to (`ai/pets.py::attribute_event`):
+    # by the device's own recognition, or by weight on a box without a camera.
+    # A visit nobody could name clears it, so it never shows the previous cat.
+    EntityDef(component="sensor", key="last_pet", name="Last Pet",
+              value_path="state.lastPet", icon="mdi:cat"),
     EntityDef(component="sensor", key="last_clean", name="Last Cleaned",
               value_path="state.lastClean", device_class="timestamp",
               icon="mdi:broom", entity_category="diagnostic"),

@@ -60,7 +60,9 @@ EXPECTED_ENTITY_COUNTS = {
     # their two times, volume, voice language, and the same two power buttons.
     # t6 +6 on 2026-08-12: the bagging mechanism it reports in every
     # property post and nothing here read. No other litter box has it.
-    "t3": 46, "t4": 46, "t5": 82, "t6": 89, "t7": 82,
+    # Every litter box +1 on 2026-10-23: `last_pet`, the pet the last visit
+    # was credited to.
+    "t3": 47, "t4": 47, "t5": 83, "t6": 90, "t7": 83,
     "feeder": 25, "feedermini": 25, "d3": 25, "d4": 25, "d4s": 25,
     # 2026-08-12: replaced `enable_feed_video` button with individual switches
     # (feed_picture, eat_video, voice_prompt, voice_disturb_mode, disturb_mode)

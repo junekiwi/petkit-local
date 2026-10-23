@@ -30,6 +30,8 @@ RUNTIME_DERIVED = {
     "lastClipPath",
     # ha/publisher.py::_build_state, from the device IP plus the camera patcher
     "streamUrl",
+    # ai/pets.py::PetRegistry.attribute_event, from a visit summary
+    "lastPet",
 }
 
 #: `settings.*` fields we know are real but deliberately never seed.
@@ -380,6 +382,8 @@ def test_the_runtime_derived_allowlist_stays_honest():
         assert key in src, f"{key} is exempted but apply_derived_state no longer writes it"
     assert "lastClipPath" in inspect.getsource(HAPublisher.publish_media_ready)
     assert "streamUrl" in inspect.getsource(HAPublisher._build_state)
+    from petkit_local.ai.pets import PetRegistry
+    assert "lastPet" in inspect.getsource(PetRegistry.attribute_event)
 
 
 def test_no_entity_key_changed_when_a_label_did():

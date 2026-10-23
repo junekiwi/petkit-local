@@ -195,20 +195,20 @@ async def handle_event_report(request: web.Request) -> web.Response:
 
     pet_registry = request.app.get("pet_registry")
     ha_publisher = request.app.get("ha_publisher")
-    # `pet_ref` is what the device claimed; `pet_id` is what we could prove.
-    # Resolving BEFORE the insert keeps the row consistent in one write, and
-    # leaving `pet_id` None for an unknown id is what stops a stale cloud
-    # identity from fabricating an HA pet device.
+    # `pet_ref` is what the device claimed; `pet_id` is what we could prove,
+    # by that claim or, for a visit naming no pet, by its weight. Resolving
+    # BEFORE the insert keeps the row consistent in one write, and leaving
+    # `pet_id` None for an unknown id is what stops a stale cloud identity from
+    # fabricating an HA pet device.
+    pet = None
     if pet_registry is not None:
-        row["pet_id"] = await pet_registry.resolve_pet_ref(row.get("pet_ref"))
+        pet = await pet_registry.attribute_event(device, row, content or {})
 
     await store.upsert_event(row)
 
-    if row.get("pet_id") is not None and pet_registry is not None and ha_publisher is not None:
-        pet = await pet_registry.get(row["pet_id"])
-        if pet:
-            await ha_publisher.publish_pet_discovery(pet)
-            await ha_publisher.publish_pet_state(pet, store)
+    if pet and ha_publisher is not None:
+        await ha_publisher.publish_pet_discovery(pet)
+        await ha_publisher.publish_pet_state(pet, store)
 
     if apply_state_snapshot(device, state):
         registry.mark_dirty()

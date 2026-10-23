@@ -24,8 +24,9 @@ import re
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
+from petkit_local.events import codes
 from petkit_local.media.transcode import normalize_face_photo
-from petkit_local.utils.coerce import to_int
+from petkit_local.utils.coerce import to_float, to_int
 from petkit_local.utils.paths import UnsafePathError, safe_join, sanitize_filename
 
 if TYPE_CHECKING:
@@ -91,6 +92,28 @@ def _write_photo(path: str, data: bytes) -> None:
 #: `add_face` enforces, applied before the download rather than after, so a
 #: reply claiming a hundred faces costs a hundred fetches to discover that.
 MAX_CLOUD_FACES = 10
+
+#: How far a visit's weight may be from a pet's own and still be credited to
+#: it: this share of the pet's weight, and never less than the floor.
+WEIGHT_MATCH_TOLERANCE = 0.15
+WEIGHT_MATCH_MIN_TOLERANCE_G = 500
+#: How much nearer the best pet must be than every other, or nobody gets the
+#: visit. Two cats of similar weight would otherwise trade visits back and
+#: forth on a few grams of scale noise.
+WEIGHT_MATCH_MARGIN_G = 300
+
+
+def pet_weight_grams(value: Any) -> float | None:
+    """A pet's stored `weight` in grams, or None if it has none.
+
+    Stored in kilograms, as PetKit's app shows it. A value above 100 is read as
+    grams already: no cat weighs 100 kg, and a weight typed in grams must not
+    become one that matches nothing.
+    """
+    weight = to_float(value, None)
+    if weight is None or weight <= 0:
+        return None
+    return weight if weight > 100 else weight * 1000
 
 
 def cloud_pets(payload: Any, device_id: int) -> list[dict[str, Any]]:
@@ -369,6 +392,57 @@ class PetRegistry:
             if pet_ref in aliases:
                 return pet["id"]
         return None
+
+    async def match_by_weight(self, device_id: int, weight_g: float) -> int | None:
+        """The pet a visit of `weight_g` grams belongs to, judged by weight.
+
+        For a box that cannot say who visited -- a T4 has no camera, and
+        PetKit's cloud matched its visits to pets by weight on its own side. The
+        candidates are the pets assigned to the device, or every pet when none
+        is; only pets with a weight take part. The nearest one gets the visit if
+        it is within its tolerance (`WEIGHT_MATCH_TOLERANCE`, at least
+        `WEIGHT_MATCH_MIN_TOLERANCE_G`) AND no other pet is within
+        `WEIGHT_MATCH_MARGIN_G` of being as near. Otherwise None: an unnamed
+        visit is better than one credited to the wrong cat.
+        """
+        pets = await self.for_device(device_id) or await self.all()
+        distances = sorted(
+            (abs(grams - weight_g), grams, pet["id"])
+            for pet in pets
+            if (grams := pet_weight_grams(pet.get("weight"))) is not None
+        )
+        if not distances:
+            return None
+        nearest, grams, pet_id = distances[0]
+        if nearest > max(WEIGHT_MATCH_MIN_TOLERANCE_G, grams * WEIGHT_MATCH_TOLERANCE):
+            return None
+        if len(distances) > 1 and distances[1][0] - nearest < WEIGHT_MATCH_MARGIN_G:
+            return None
+        return pet_id
+
+    async def attribute_event(self, device: Any, row: dict, content: dict) -> dict | None:
+        """Set `row["pet_id"]` for an event, and name the box's last visitor.
+
+        The device's own claim first (`resolve_pet_ref`). For a visit summary
+        that names no pet we can prove, the visit's weight instead
+        (`match_by_weight`). A visit summary also sets the box's `lastPet`,
+        the pet's name or None, so a visit nobody could name does not leave the
+        previous cat's name standing. Shared by both transports.
+
+        Returns:
+            The attributed pet's row, or None.
+        """
+        row["pet_id"] = await self.resolve_pet_ref(row.get("pet_ref"))
+        code = codes.lookup(row.get("event_type"), device.device_type)
+        is_visit = code is not None and code.role == codes.ROLE_VISIT_SUMMARY
+        if row["pet_id"] is None and is_visit:
+            weight = to_float(content.get("pet_weight", content.get("petWeight")), None)
+            if weight is not None and weight > 0:
+                row["pet_id"] = await self.match_by_weight(device.petkit_id, weight)
+        pet = await self.get(row["pet_id"]) if row["pet_id"] is not None else None
+        if is_visit:
+            device.state["lastPet"] = pet["name"] if pet else None
+        return pet
 
     async def pet_for_related_event(self, related_event: str) -> dict | None:
         """Best-effort pet lookup for a visit session — used by

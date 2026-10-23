@@ -498,17 +498,17 @@ class MQTTBridge:
         if self._event_store is not None and event_type not in codes.MQTT_TRANSPORT_TOPICS:
             row = ingest.from_mqtt(device, event_type, params)
             # Same rule as the HTTP path: only an identity we can prove is ours
-            # becomes `pet_id` (see ai/pets.py::resolve_pet_ref).
+            # becomes `pet_id` (see ai/pets.py::attribute_event).
+            pet = None
             if self._pet_registry is not None:
-                row["pet_id"] = await self._pet_registry.resolve_pet_ref(row.get("pet_ref"))
+                content = json.loads(row["content_json"]) if row.get("content_json") else {}
+                pet = await self._pet_registry.attribute_event(device, row, content)
             await self._event_store.upsert_event(row)
             if self._hub is not None:
                 self._hub.publish("event", device.petkit_id, f"{event_type} ({row['event_kind']})")
-            if row.get("pet_id") is not None and self._pet_registry is not None and self._ha_publisher:
-                pet = await self._pet_registry.get(row["pet_id"])
-                if pet:
-                    await self._ha_publisher.publish_pet_discovery(pet)
-                    await self._ha_publisher.publish_pet_state(pet, self._event_store)
+            if pet and self._ha_publisher:
+                await self._ha_publisher.publish_pet_discovery(pet)
+                await self._ha_publisher.publish_pet_state(pet, self._event_store)
 
         # Fire the matching HA event entity (momentary).
         entity_suffix = entity_for_event(event_type, device.device_type)

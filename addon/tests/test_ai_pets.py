@@ -283,3 +283,36 @@ def test_best_match_still_falls_back_when_score_info_is_empty():
     assert _extract_score({"score_info": [131]}) == 131
     assert _extract_score({"score_info": []}) is None
     assert _extract_pet_ref({"score_info": [], "petId": 7}) == 7
+
+
+async def test_a_visit_goes_to_the_pet_of_nearest_weight(pet_registry: PetRegistry):
+    """Real T4 visits (fw 1.652, 2026-10-22/23) against a 5.1 and a 3.7 kg cat."""
+    kinder = await pet_registry.create("Kinder", device_ids=[7], weight=5.1)
+    lilith = await pet_registry.create("Lilith", device_ids=[7], weight=3.7)
+    for grams in (3663, 3678, 3621):
+        assert await pet_registry.match_by_weight(7, grams) == lilith["id"]
+    assert await pet_registry.match_by_weight(7, 5051) == kinder["id"]
+    # A mid-visit partial reading, and a weight between the two: nobody.
+    assert await pet_registry.match_by_weight(7, 1900) is None
+    assert await pet_registry.match_by_weight(7, 4400) is None
+
+
+async def test_weight_in_grams_is_read_as_grams(pet_registry: PetRegistry):
+    pet = await pet_registry.create("Kinder", weight=5100)
+    assert await pet_registry.match_by_weight(7, 5051) == pet["id"]
+
+
+async def test_attribute_event_names_the_box_s_last_visitor(pet_registry: PetRegistry):
+    from petkit_local.devices.base import Device
+    lilith = await pet_registry.create("Lilith", device_ids=[7], weight=3.7)
+    box = Device(device_type="t4", petkit_id=7)
+    row = {"event_type": "10", "pet_ref": None}
+    pet = await pet_registry.attribute_event(box, row, {"pet_weight": 3663})
+    assert pet["id"] == row["pet_id"] == lilith["id"]
+    assert box.state["lastPet"] == "Lilith"
+    # Only a visit summary is matched, and an unnamed visit clears the name.
+    row = {"event_type": "9", "pet_ref": None}
+    assert await pet_registry.attribute_event(box, row, {"pet_weight": 3663}) is None
+    assert box.state["lastPet"] == "Lilith"
+    await pet_registry.attribute_event(box, {"event_type": "10"}, {"pet_weight": 4400})
+    assert box.state["lastPet"] is None
