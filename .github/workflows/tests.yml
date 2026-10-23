@@ -46,6 +46,11 @@ jobs:
           cache-dependency-path: |
             addon/requirements.txt
             addon/pyproject.toml
+      - name: Install ffmpeg
+        # The stitcher and video-thumbnail tests drive a real ffmpeg and skip
+        # without one, and the runner image does not ship it. Those are the
+        # tests guarding the one code path that deletes media (media/stitch.py).
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       - name: Install dependencies
         # requirements.txt is what the Docker image installs and pyproject.toml
         # is what a pip install resolves — install both so the two cannot drift

@@ -345,7 +345,7 @@ async def test_concurrent_video_thumbs_never_expose_a_partial_file():
     half-written JPEG. Each run now writes a temp file and renames it in."""
     from petkit_local.media.transcode import have_ffmpeg
     if not have_ffmpeg():
-        return  # nothing to assert without ffmpeg; the failure path is covered above
+        pytest.skip("ffmpeg not installed; the failure path is covered above")
 
     with tempfile.TemporaryDirectory() as tmp:
         video = Path(tmp) / "clip.mp4"

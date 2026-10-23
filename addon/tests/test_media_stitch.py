@@ -1,7 +1,13 @@
 """Stitcher tests. The concat/verify tests need a real ffmpeg (they generate
-actual video and check the joined result decodes) and skip themselves when
-it's unavailable, so the suite still runs on a machine without it — CI and
-the add-on image both have ffmpeg (see Dockerfile)."""
+actual video and check the joined result decodes) and are SKIPPED when it is
+unavailable, so the suite still runs on a machine without it. Skipped, not
+returned from: an early `return` is reported as a pass, which is how these
+tests once passed in CI without running a single ffmpeg.
+
+The orchestration of `stitch_episode` — which chunks are retried, kept, deleted
+and marked — is also tested without ffmpeg, by standing in for the four media
+primitives. Real files on disk have version-dependent ways of failing, so the
+real-video tests cannot be relied on to reach a given branch."""
 import asyncio
 import os
 import shutil
@@ -17,16 +23,22 @@ from petkit_local.media import stitch
 
 HAVE_FFMPEG = shutil.which("ffmpeg") is not None and shutil.which("ffprobe") is not None
 
+requires_ffmpeg = pytest.mark.skipif(not HAVE_FFMPEG, reason="ffmpeg/ffprobe not installed")
 
-def _make_clip(path: str, seconds: int = 1, size: int = 64) -> bool:
-    """Generate a small real H.264 clip with ffmpeg's test source."""
+
+def _make_clip(path: str, seconds: int = 1, size: int = 64) -> None:
+    """Generate a small real H.264 clip with ffmpeg's test source.
+
+    Skips the calling test if this ffmpeg build cannot encode one (no libx264).
+    """
     r = subprocess.run(
         ["ffmpeg", "-y", "-f", "lavfi", "-i",
          f"testsrc=duration={seconds}:size={size}x{size}:rate=10",
          "-c:v", "libx264", "-pix_fmt", "yuv420p", path],
         capture_output=True,
     )
-    return r.returncode == 0 and os.path.isfile(path)
+    if r.returncode != 0 or not os.path.isfile(path):
+        pytest.skip("this ffmpeg build cannot encode H.264 test clips")
 
 
 async def _store(tmp):
@@ -57,17 +69,18 @@ def test_expected_duration_sums_chunk_durations():
     assert stitch._expected_duration_sec(chunks) == 7.999
     assert stitch._expected_duration_sec([{"duration_ms": None}]) is None
     assert stitch._expected_duration_sec([]) is None
+    # A raw device string loses that chunk's contribution, not the whole join.
+    assert stitch._expected_duration_sec([{"duration_ms": "4000ms"},
+                                          {"duration_ms": 1000}]) == 1.0
 
 
+@requires_ffmpeg
 def test_concat_and_verify_real_video():
-    if not HAVE_FFMPEG:
-        return
     with tempfile.TemporaryDirectory() as tmp:
         parts = []
         for i in range(3):
             p = os.path.join(tmp, f"part{i}.mp4")
-            if not _make_clip(p, seconds=1):
-                return  # encoder unavailable in this build — nothing to assert
+            _make_clip(p, seconds=1)
             parts.append(p)
 
         out = os.path.join(tmp, "joined.mp4")
@@ -78,13 +91,11 @@ def test_concat_and_verify_real_video():
         assert asyncio.run(stitch.verify_video(out, expected_duration_sec=3.0)) is True
 
 
+@requires_ffmpeg
 def test_verify_rejects_truncated_file():
-    if not HAVE_FFMPEG:
-        return
     with tempfile.TemporaryDirectory() as tmp:
         good = os.path.join(tmp, "good.mp4")
-        if not _make_clip(good, seconds=1):
-            return
+        _make_clip(good, seconds=1)
         bad = os.path.join(tmp, "bad.mp4")
         data = Path(good).read_bytes()
         Path(bad).write_bytes(data[: len(data) // 3])  # chop it up
@@ -99,13 +110,11 @@ def test_verify_rejects_missing_and_empty():
         assert asyncio.run(stitch.verify_video(empty)) is False
 
 
+@requires_ffmpeg
 def test_verify_rejects_duration_shorter_than_expected():
-    if not HAVE_FFMPEG:
-        return
     with tempfile.TemporaryDirectory() as tmp:
         clip = os.path.join(tmp, "short.mp4")
-        if not _make_clip(clip, seconds=1):
-            return
+        _make_clip(clip, seconds=1)
         # claim we expected 10s from a 1s file -> input was dropped
         assert asyncio.run(stitch.verify_video(clip, expected_duration_sec=10.0)) is False
 
@@ -190,9 +199,8 @@ async def test_replace_chunks_with_stitched_is_atomic_swap():
         assert rows[0]["file_id"] == "stitched:epS:fullVideo"
 
 
+@requires_ffmpeg
 async def test_stitch_episode_end_to_end_replaces_chunks_and_keeps_one_playable_file():
-    if not HAVE_FFMPEG:
-        return
     with tempfile.TemporaryDirectory() as tmp:
         store = await _store(tmp)
         media_root = os.path.join(tmp, "media")
@@ -202,8 +210,7 @@ async def test_stitch_episode_end_to_end_replaces_chunks_and_keeps_one_playable_
         paths = []
         for i in range(3):
             p = os.path.join(day_dir, f"chunk{i}.mp4")
-            if not _make_clip(p, seconds=1):
-                return
+            _make_clip(p, seconds=1)
             paths.append(p)
             await _add_chunk(store, p, "epE", "fullVideo", 1000.0 + i, duration_ms=1000)
 
@@ -270,30 +277,26 @@ async def test_reclassify_media_categories_fixes_old_rows():
         assert await store.reclassify_media_categories(_MODULE_TYPE_TO_CATEGORY) == 0
 
 
+@requires_ffmpeg
 def test_split_by_stream_separates_mismatched_chunk():
     """A single foreign chunk must not sink the whole episode — real data hit
     exactly this (26 x 1056x1056 plus one stray 528x528)."""
-    if not HAVE_FFMPEG:
-        return
     with tempfile.TemporaryDirectory() as tmp:
         good = []
         for i in range(3):
             p = os.path.join(tmp, f"big{i}.mp4")
-            if not _make_clip(p, seconds=1, size=64):
-                return
+            _make_clip(p, seconds=1, size=64)
             good.append(p)
         odd = os.path.join(tmp, "small.mp4")
-        if not _make_clip(odd, seconds=1, size=32):  # different resolution
-            return
+        _make_clip(odd, seconds=1, size=32)  # different resolution
 
         keep, outliers = asyncio.run(stitch.split_by_stream(good + [odd]))
         assert sorted(keep) == sorted(good)
         assert outliers == [odd]
 
 
+@requires_ffmpeg
 async def test_stitch_episode_excludes_mismatched_chunk_but_keeps_its_file():
-    if not HAVE_FFMPEG:
-        return
     with tempfile.TemporaryDirectory() as tmp:
         store = await _store(tmp)
         media_root = os.path.join(tmp, "media")
@@ -303,13 +306,11 @@ async def test_stitch_episode_excludes_mismatched_chunk_but_keeps_its_file():
         good = []
         for i in range(3):
             p = os.path.join(day_dir, f"ok{i}.mp4")
-            if not _make_clip(p, seconds=1, size=64):
-                return
+            _make_clip(p, seconds=1, size=64)
             good.append(p)
             await _add_chunk(store, p, "epX", "fullVideo", 1000.0 + i, duration_ms=1000)
         odd = os.path.join(day_dir, "odd.mp4")
-        if not _make_clip(odd, seconds=1, size=32):
-            return
+        _make_clip(odd, seconds=1, size=32)
         await _add_chunk(store, odd, "epX", "fullVideo", 1003.0, duration_ms=1000)
 
         episode = (await store.stitch_candidates(("fullVideo",), quiet_before_ts=2000.0))[0]
@@ -327,11 +328,16 @@ async def test_stitch_episode_excludes_mismatched_chunk_but_keeps_its_file():
         assert await stitch.verify_video(out, expected_duration_sec=3.0) is True
 
 
+@requires_ffmpeg
 async def test_stitch_recovers_by_dropping_an_undecodable_chunk():
-    """A chunk that probes OK but breaks the join must be identified on the
-    retry pass, not sink the episode (real-device failure mode)."""
-    if not HAVE_FFMPEG:
-        return
+    """A corrupted chunk must not sink the episode (real-device failure mode),
+    and must be kept rather than deleted.
+
+    This asserts the OUTCOME only. Which layer catches the chunk depends on the
+    ffmpeg build: ffprobe 7.1 already fails to read it, so `split_by_stream`
+    sets it aside and the retry pass never runs. The retry pass itself is
+    pinned by `test_the_retry_pass_drops_a_chunk_that_probes_but_will_not_decode`.
+    """
     with tempfile.TemporaryDirectory() as tmp:
         store = await _store(tmp)
         media_root = os.path.join(tmp, "media")
@@ -341,14 +347,12 @@ async def test_stitch_recovers_by_dropping_an_undecodable_chunk():
         good = []
         for i in range(3):
             p = os.path.join(day_dir, f"g{i}.mp4")
-            if not _make_clip(p, seconds=1, size=64):
-                return
+            _make_clip(p, seconds=1, size=64)
             good.append(p)
             await _add_chunk(store, p, "epR", "fullVideo", 1000.0 + i, duration_ms=1000)
 
-        # A file that still parses as MP4 (intact header, so it probes fine
-        # and split_by_stream can't tell) but whose compressed payload is
-        # damaged — mirrors the corrupted chunk seen in production.
+        # Intact header, damaged compressed payload — mirrors the corrupted
+        # chunk seen in production.
         broken = os.path.join(day_dir, "broken.mp4")
         src = bytearray(Path(good[0]).read_bytes())
         mid = len(src) // 2
@@ -389,15 +393,13 @@ def test_concat_list_entry_rejects_line_terminators_and_nul():
             pass
 
 
+@requires_ffmpeg
 def test_concat_videos_refuses_a_path_with_a_newline():
     """Defensive independently of media/layout.py's sanitizer: rows written by
     older builds are not guaranteed to have been sanitized."""
-    if not HAVE_FFMPEG:
-        return
     with tempfile.TemporaryDirectory() as tmp:
         good = os.path.join(tmp, "good.mp4")
-        if not _make_clip(good, seconds=1):
-            return
+        _make_clip(good, seconds=1)
         out = os.path.join(tmp, "out.mp4")
         ok = asyncio.run(stitch.concat_videos(
             [good, "/m/evil\nfile '/etc/passwd'"], out, work_dir=os.path.join(tmp, "work")))
@@ -405,16 +407,14 @@ def test_concat_videos_refuses_a_path_with_a_newline():
         assert not os.path.exists(out)
 
 
+@requires_ffmpeg
 def test_concat_joins_paths_containing_single_quotes():
     """End-to-end proof the escaping is right, not just plausible."""
-    if not HAVE_FFMPEG:
-        return
     with tempfile.TemporaryDirectory() as tmp:
         parts = []
         for i in range(2):
             p = os.path.join(tmp, f"Mruczek's clip {i}.mp4")
-            if not _make_clip(p, seconds=1):
-                return
+            _make_clip(p, seconds=1)
             parts.append(p)
         out = os.path.join(tmp, "joined.mp4")
         assert asyncio.run(stitch.concat_videos(
@@ -422,17 +422,15 @@ def test_concat_joins_paths_containing_single_quotes():
         assert asyncio.run(stitch.verify_video(out, expected_duration_sec=2.0)) is True
 
 
+@requires_ffmpeg
 def test_concat_list_is_cleaned_up_and_named_after_its_output():
     """A stable, output-derived name means a run killed mid-concat leaves a
     file the next run for the same episode overwrites, not an orphan."""
-    if not HAVE_FFMPEG:
-        return
     with tempfile.TemporaryDirectory() as tmp:
         parts = []
         for i in range(2):
             p = os.path.join(tmp, f"c{i}.mp4")
-            if not _make_clip(p, seconds=1):
-                return
+            _make_clip(p, seconds=1)
             parts.append(p)
         work = os.path.join(tmp, "work")
         out = os.path.join(tmp, "stitching_fullVideo_abc123.mp4")
@@ -464,12 +462,11 @@ def test_episode_slug_separates_the_two_video_streams():
             != stitch._episode_slug({**base, "category": "cloudDouble"}))
 
 
+@requires_ffmpeg
 async def test_repeated_failed_stitches_do_not_accumulate_temp_files():
     """The temp name is derived from the episode, so a retry reuses it. With
     a per-process `hash()` every attempt left one more orphan in the work
     dir, and nothing could ever recognise them."""
-    if not HAVE_FFMPEG:
-        return
     with tempfile.TemporaryDirectory() as tmp:
         store = await _store(tmp)
         media_root = os.path.join(tmp, "media")
@@ -477,8 +474,7 @@ async def test_repeated_failed_stitches_do_not_accumulate_temp_files():
         os.makedirs(day_dir, exist_ok=True)
         for i in range(3):
             p = os.path.join(day_dir, f"c{i}.mp4")
-            if not _make_clip(p, seconds=1, size=64):
-                return
+            _make_clip(p, seconds=1, size=64)
             # Claiming 100s per 1s chunk makes verification reject the join on
             # the duration ratio, so every attempt gets as far as writing the
             # temp file and then fails.
@@ -504,3 +500,175 @@ def test_claim_unique_path_never_hands_out_the_same_name_twice():
         assert second.endswith(" (2).mp4") and third.endswith(" (3).mp4")
         for p in (first, second, third):
             assert os.path.isfile(p)
+
+
+# --- stitch_episode orchestration, without ffmpeg ---------------------------
+#
+# What these pin is the bookkeeping around the four media primitives: which
+# chunks reach a join, which are retried without, and — because a stitch
+# deletes its sources — which files are still on disk afterwards.
+
+
+def _fake_media(monkeypatch, *, undecodable=(), probe_outliers=()):
+    """Stand in for ffmpeg. Returns the list of joins attempted, in order.
+
+    A join that contains an `undecodable` chunk fails verification, which is
+    what a corrupt chunk does to a real one. `probe_outliers` are the chunks
+    `split_by_stream` sets aside.
+    """
+    joins = []
+
+    async def split(paths):
+        return ([p for p in paths if p not in probe_outliers],
+                [p for p in paths if p in probe_outliers])
+
+    async def concat(paths, dst, work_dir):
+        joins.append(list(paths))
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        Path(dst).write_bytes(b"joined")
+        return True
+
+    async def verify(path, expected_duration_sec=None):
+        return not any(p in undecodable for p in joins[-1])
+
+    async def decodable(path):
+        return path not in undecodable
+
+    monkeypatch.setattr(stitch, "split_by_stream", split)
+    monkeypatch.setattr(stitch, "concat_videos", concat)
+    monkeypatch.setattr(stitch, "verify_video", verify)
+    monkeypatch.setattr(stitch, "is_decodable", decodable)
+    return joins
+
+
+async def _dummy_episode(store, day_dir, related_event, n):
+    """`n` chunk rows backed by files whose bytes do not matter."""
+    os.makedirs(day_dir, exist_ok=True)
+    paths = []
+    for i in range(n):
+        p = os.path.join(day_dir, f"{related_event}-{i}.mp4")
+        Path(p).write_bytes(b"chunk %d" % i)
+        paths.append(p)
+        await _add_chunk(store, p, related_event, "fullVideo", 1000.0 + i)
+    episode = (await store.stitch_candidates(("fullVideo",), quiet_before_ts=2000.0))[0]
+    return paths, episode
+
+
+async def test_the_retry_pass_drops_a_chunk_that_probes_but_will_not_decode(monkeypatch):
+    """The failure the retry exists for: a chunk well-formed enough to probe
+    that still breaks the join (two writers racing on one filename)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        store = await _store(tmp)
+        media_root = os.path.join(tmp, "media")
+        paths, episode = await _dummy_episode(
+            store, os.path.join(media_root, "Dev", "Playback", "2026-07-22"), "epR", 4)
+        broken = paths[2]
+        joins = _fake_media(monkeypatch, undecodable={broken})
+
+        out = await stitch.stitch_episode(store, episode, media_root,
+                                          work_dir=os.path.join(tmp, "work"), device_type="t5")
+
+        good = [p for p in paths if p != broken]
+        assert joins == [paths, good], "expected one full join, then one without the bad chunk"
+        assert out is not None and os.path.isfile(out)
+        assert os.path.isfile(broken), "the dropped chunk must be kept, not deleted"
+        for p in good:
+            assert not os.path.exists(p) or p == out
+        rows = await store.media_for_retention("fullVideo")
+        assert {r["media_path"] for r in rows} == {out, broken}
+        # Flagged, so the sweeper does not keep reconsidering it.
+        assert await store.stitch_candidates(("fullVideo",), quiet_before_ts=2000.0) == []
+
+
+async def test_a_retry_that_leaves_fewer_than_two_good_chunks_deletes_nothing(monkeypatch):
+    with tempfile.TemporaryDirectory() as tmp:
+        store = await _store(tmp)
+        media_root = os.path.join(tmp, "media")
+        work = os.path.join(tmp, "work")
+        paths, episode = await _dummy_episode(
+            store, os.path.join(media_root, "Dev", "Playback", "2026-07-22"), "epB", 3)
+        joins = _fake_media(monkeypatch, undecodable={paths[0], paths[1]})
+
+        out = await stitch.stitch_episode(store, episode, media_root, work_dir=work,
+                                          device_type="t5")
+
+        assert out is None
+        assert joins == [paths], "one good chunk is not worth a second join"
+        for p in paths:
+            assert os.path.isfile(p), "chunks must be kept when stitching fails"
+        assert os.listdir(work) == [], "the failed join's temp file was left behind"
+        assert await store.stitch_candidates(("fullVideo",), quiet_before_ts=2000.0) == []
+
+
+async def test_an_episode_whose_files_are_mostly_gone_is_not_joined(monkeypatch):
+    with tempfile.TemporaryDirectory() as tmp:
+        store = await _store(tmp)
+        media_root = os.path.join(tmp, "media")
+        paths, episode = await _dummy_episode(
+            store, os.path.join(media_root, "Dev", "Playback", "2026-07-22"), "epM", 2)
+        os.remove(paths[1])
+        joins = _fake_media(monkeypatch)
+
+        out = await stitch.stitch_episode(store, episode, media_root,
+                                          work_dir=os.path.join(tmp, "work"), device_type="t5")
+
+        assert out is None and joins == []
+        assert os.path.isfile(paths[0])
+        assert await store.stitch_candidates(("fullVideo",), quiet_before_ts=2000.0) == []
+
+
+async def test_an_episode_with_no_two_matching_streams_is_left_alone(monkeypatch):
+    with tempfile.TemporaryDirectory() as tmp:
+        store = await _store(tmp)
+        media_root = os.path.join(tmp, "media")
+        paths, episode = await _dummy_episode(
+            store, os.path.join(media_root, "Dev", "Playback", "2026-07-22"), "epS", 3)
+        joins = _fake_media(monkeypatch, probe_outliers={paths[1], paths[2]})
+
+        out = await stitch.stitch_episode(store, episode, media_root,
+                                          work_dir=os.path.join(tmp, "work"), device_type="t5")
+
+        assert out is None and joins == []
+        for p in paths:
+            assert os.path.isfile(p)
+        assert await store.stitch_candidates(("fullVideo",), quiet_before_ts=2000.0) == []
+
+
+async def test_one_exploding_episode_does_not_stop_the_sweep(monkeypatch):
+    """A single undecodable episode must not keep the media tree from ever
+    converging — and the panel hears about the one that did join."""
+    episodes = [
+        {"device_id": 1, "related_event": "bad", "category": "fullVideo", "chunks": []},
+        {"device_id": 1, "related_event": "good", "category": "cloudDouble", "chunks": []},
+    ]
+
+    class Store:
+        async def stitch_candidates(self, categories, quiet_before_ts):
+            return episodes
+
+    class Registry:
+        def get(self, device_id):
+            return type("Device", (), {"device_type": "t5"})()
+
+    class Hub:
+        def __init__(self):
+            self.published = []
+
+        def publish(self, kind, device_id, text, detail=None):
+            self.published.append((kind, device_id, detail))
+
+    seen = []
+
+    async def fake_stitch(store, ep, media_root, work_dir, device_type=""):
+        seen.append((ep["related_event"], device_type))
+        if ep["related_event"] == "bad":
+            raise RuntimeError("boom inside one episode")
+        return "/m/clip.mp4"
+
+    monkeypatch.setattr(stitch, "stitch_episode", fake_stitch)
+    hub = Hub()
+    sweeper = stitch.EpisodeStitcher(Store(), Registry(), "/m", "/m/.raw", hub=hub)
+
+    assert await sweeper.run_once() == 1
+    assert seen == [("bad", "t5"), ("good", "t5")]
+    assert hub.published == [("media", 1, {"stitched": True, "category": "cloudDouble"})]
