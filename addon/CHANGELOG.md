@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.1.3 — 2026-10-23
+
+- **Food Low reads the right way round** (Nikola Milojević, upstream PR #27).
+  A feeder's `food` says food is present: a YumShare Solo holds 2 when full,
+  a D4 holds 1, and both report 0 only when empty. Bound straight to it, the
+  problem sensor showed every full hopper as low. It now reads a `foodLow`
+  derived from `food == 0`.
+
 ## 2.1.2 — 2026-10-23
 
 - **Import a device's configuration.** Setup → Import configuration (and

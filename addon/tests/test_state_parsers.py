@@ -404,6 +404,14 @@ def test_food_low_is_derived_from_presence_not_truthiness():
     assert "foodLow" not in normalize_property_params("d4sh", D4SH_STATE)
 
 
+def test_a_d4_with_food_is_not_low():
+    """A D4 (fw 1.267) reports `food: 1` with food in it -- every state report
+    of two feeders over a day of PetKit's own traffic, proxied 2026-10-22, while
+    PetKit's app showed their food level fine -- so 1 is presence too."""
+    assert parse_state_report("d4", {"food": 1})["foodLow"] == 0
+    assert parse_state_report("d4", {"food": 0})["foodLow"] == 1
+
+
 def test_the_device_ip_still_comes_out_of_the_other_string():
     """Everything downstream of the camera needs it — the stream URL and the
     whole Patchers tab go quiet without one."""
