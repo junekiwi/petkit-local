@@ -144,6 +144,12 @@
   dispensed)" on every meal the feeder rightly skipped. It now reads "Feeding
   skipped (bowl not empty)".
 
+- **A D4H no longer gets four entities it can never fill** (upstream issue
+  #36): Device Status, which reads a work state the D4H does not report, and
+  the D4SH's three IR readings (`ir_b_1`, `ir_b_2`, `ir_c`), where a D4H sends
+  a single `ir`. They are removed from Home Assistant, not just left
+  unannounced. A D4SH keeps its IR readings.
+
 ## 2.1.4 — 2026-10-23
 
 - **A litter box without a camera names the cat by weight.** A T4 cannot

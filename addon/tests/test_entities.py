@@ -76,7 +76,9 @@ EXPECTED_ENTITY_COUNTS = {
     # 2026-08-12: replaced `enable_feed_video` button with individual switches
     # (feed_picture, eat_video, voice_prompt, voice_disturb_mode, disturb_mode)
     # and added selected_sound number + play_sound button. Net +6.
-    "d4h": 57, "d4sh": 61,
+    # d4h -4 on 2026-10-23: Device Status and the D4SH's three IR readings,
+    # none of which a D4H reports (upstream issue #36); retired from HA.
+    "d4h": 53, "d4sh": 61,
     "w4": 24, "w5": 24, "ctw2": 24, "ctw3": 24, "w7h": 81,
     "k2": 12, "k3": 12,
 }
@@ -259,3 +261,18 @@ def test_event_entity_options_accept_every_event_the_device_can_fire():
                 continue
             assert code in events[key].options, (
                 f"{dt}: HTTP code '{code}' fires '{key}' but its event_types omit it")
+
+
+def test_a_d4h_publishes_none_of_the_entities_it_never_fills():
+    """Upstream issue #36: a D4H (fw 867) reports no `workingState` and none
+    of the D4SH's `ir_b_1`/`ir_b_2`/`ir_c`. Those entities are left out and
+    retired, so HA drops the ones earlier versions announced; the D4SH keeps
+    its IR readings."""
+    from petkit_local.ha.categories import get_retired_entities_for_device
+
+    gone = {"device_status", "ir_b_1", "ir_b_2", "ir_c"}
+    d4h = Device(device_type="d4h", petkit_id=1, serial_number="SN")
+    assert not gone & {e.key for e in get_entities_for_device(d4h)}
+    assert {e.key for e in get_retired_entities_for_device(d4h)} == gone
+    d4sh = Device(device_type="d4sh", petkit_id=2, serial_number="SN")
+    assert {"ir_b_1", "ir_b_2", "ir_c"} <= {e.key for e in get_entities_for_device(d4sh)}

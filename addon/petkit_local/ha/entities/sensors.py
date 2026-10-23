@@ -306,9 +306,23 @@ FEEDER_NEXT_GEN_SENSORS = [
     EntityDef(component="sensor", key="door_raw", name="door",
               value_path="state.door", icon="mdi:help-circle-outline",
               entity_category="diagnostic"),
-    # Three infrared readings. Blocking a sensor did raise a "feed chute
-    # blocked" fault, so at least one of them watches the chute — but none of
-    # the three moved while the owner was doing it, so which is which is open.
+    # The DC line, in millivolts going by the 6228-6234 a mains-powered feeder
+    # reports. `batV` is deliberately NOT published: it reads 0 with no backup
+    # batteries fitted, which the owner confirmed is their case, and a battery
+    # sensor pinned at 0 looks like a flat battery rather than an absent one.
+    EntityDef(component="sensor", key="dc_millivolts", name="DC Voltage",
+              value_path="state.DCV", unit="mV", device_class="voltage",
+              entity_category="diagnostic"),
+]
+
+#: Three infrared readings, from a D4SH. Blocking a sensor did raise a "feed
+#: chute blocked" fault, so at least one of them watches the chute — but none
+#: of the three moved while the owner was doing it, so which is which is open.
+#:
+#: D4SH ONLY, like FEEDER_DUAL_HOPPER_SENSORS: a D4H (fw 867) sends none of
+#: the three, only a scalar `ir`, with its chute blocks in `err.blk_f` /
+#: `err.blk_d` (upstream issue #36), so on a D4H these could never read.
+FEEDER_DUAL_IR_SENSORS = [
     EntityDef(component="sensor", key="ir_b_1", name="ir_b_1",
               value_path="state.ir_b_1", icon="mdi:leak",
               entity_category="diagnostic"),
@@ -317,13 +331,6 @@ FEEDER_NEXT_GEN_SENSORS = [
               entity_category="diagnostic"),
     EntityDef(component="sensor", key="ir_c", name="ir_c",
               value_path="state.ir_c", icon="mdi:leak",
-              entity_category="diagnostic"),
-    # The DC line, in millivolts going by the 6228-6234 a mains-powered feeder
-    # reports. `batV` is deliberately NOT published: it reads 0 with no backup
-    # batteries fitted, which the owner confirmed is their case, and a battery
-    # sensor pinned at 0 looks like a flat battery rather than an absent one.
-    EntityDef(component="sensor", key="dc_millivolts", name="DC Voltage",
-              value_path="state.DCV", unit="mV", device_class="voltage",
               entity_category="diagnostic"),
 ]
 

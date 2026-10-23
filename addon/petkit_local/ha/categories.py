@@ -41,8 +41,8 @@ from petkit_local.ha.entities.selects import (
     FEEDER_SELECTS, FOUNTAIN_SELECTS, FOUNTAIN_W7H_SELECTS, LITTER_SELECTS,
 )
 from petkit_local.ha.entities.sensors import (
-    FEEDER_BINARY_SENSORS, FEEDER_DUAL_HOPPER_SENSORS, FEEDER_NEXT_GEN_HALL_SENSORS,
-    FEEDER_NEXT_GEN_SENSORS, FEEDER_SINGLE_HOPPER_SENSORS, FEEDER_SENSORS,
+    FEEDER_BINARY_SENSORS, FEEDER_DUAL_HOPPER_SENSORS, FEEDER_DUAL_IR_SENSORS,
+    FEEDER_NEXT_GEN_HALL_SENSORS, FEEDER_NEXT_GEN_SENSORS, FEEDER_SINGLE_HOPPER_SENSORS, FEEDER_SENSORS,
     FOUNTAIN_BINARY_SENSORS, FOUNTAIN_SENSORS,
     FOUNTAIN_W7H_BINARY_SENSORS, FOUNTAIN_W7H_HALL_SENSORS, FOUNTAIN_W7H_SENSORS,
     LITTER_BINARY_SENSORS, LITTER_CAMERA_HALL_SENSORS, LITTER_CAMERA_SENSORS,
@@ -272,8 +272,8 @@ CATEGORY_SPECS: dict[str, CategorySpec] = {
             # `food`, not the D4SH's `food1`. See FEEDER_SINGLE_HOPPER_SENSORS.
             ("d4h", (*FEEDER_NEXT_GEN_SENSORS, *FEEDER_SINGLE_HOPPER_SENSORS,
                      *FEEDER_NEXT_GEN_HALL_SENSORS)),
-            ("d4sh", (*FEEDER_NEXT_GEN_SENSORS, *FEEDER_DUAL_HOPPER_SENSORS,
-                      *FEEDER_NEXT_GEN_HALL_SENSORS,
+            ("d4sh", (*FEEDER_NEXT_GEN_SENSORS, *FEEDER_DUAL_IR_SENSORS,
+                      *FEEDER_DUAL_HOPPER_SENSORS, *FEEDER_NEXT_GEN_HALL_SENSORS,
                       *FEEDER_DUAL_BUTTONS, *FEEDER_DUAL_NUMBERS)),
         ),
         # Four controls a D4SH cannot fill, and the reason is the same for each:
@@ -306,7 +306,21 @@ CATEGORY_SPECS: dict[str, CategorySpec] = {
             # firmware-verified half of the split.
             ("d4h", frozenset({
                 "food_in_bowl", "food_bowl_pct", "battery_installed",
+                # `state.workingState`: a D4H (fw 867) reports no work state,
+                # only `ready[5]` and `ultra_sta` (upstream issue #36).
+                "device_status",
             })),
+        ),
+        # Published to a D4H by earlier versions and never filled: Device
+        # Status above, and the D4SH's three IR readings, which a D4H does not
+        # send (`FEEDER_DUAL_IR_SENSORS`).
+        model_retired=(
+            ("d4h", (
+                EntityDef(component="sensor", key="device_status", name="Device Status"),
+                EntityDef(component="sensor", key="ir_b_1", name="ir_b_1"),
+                EntityDef(component="sensor", key="ir_b_2", name="ir_b_2"),
+                EntityDef(component="sensor", key="ir_c", name="ir_c"),
+            )),
         ),
     ),
     # Of the five fountain codenames, only `w7h` can ever reach this table: the
