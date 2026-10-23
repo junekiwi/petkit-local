@@ -12,7 +12,11 @@
 > - **A D4 is answered the way PetKit answers it**: flat MQTT credentials, and its settings
 >   block (with `factor` and `lightRange`) at signup.
 > - **Upstream pull requests merged here**: flat credentials for T3/T4 (#42), Pura Air readings
->   from an HTTP parent (#28), a T4's visit count (#32), single-hopper feed schedules (#29).
+>   from an HTTP parent (#28), a T4's visit count (#32), single-hopper feed schedules (#29), Food
+>   Low on a full hopper (#27), working HA event entities (#26), W7H controls matching the app
+>   (#39), feed times at the device's own UTC offset (#30), the schedule editor's weekdays and
+>   time fields (#31), MQTT 5 refusals a T6 can read (#41), proxy mode learning settings (#40),
+>   and the Fresh Element Gemini (D4S, adapted from #43).
 >
 > Details and evidence are in the [changelog](addon/CHANGELOG.md); the full diff is
 > [upstream...fork](https://github.com/alex-so-3/petkit-local/compare/main...junekiwi:petkit-local:main).
