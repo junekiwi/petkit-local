@@ -433,11 +433,45 @@ class MQTTBridge:
                 if body:
                     self._hub.set_state_report(device.petkit_id, body)
 
+        # Persist to the event store, skipping pure protocol/telemetry messages:
+        # "property" is continuous state rather than a discrete event, and
+        # data_get / ble_response / ble_relay_* are plumbing. Mirrors
+        # http/handlers/stubs.py's dev_event_report handling so events land
+        # regardless of transport.
+        #
+        # Read from `codes.MQTT_TRANSPORT_TOPICS` rather than repeated here,
+        # which is what that constant asks for and what the two had drifted
+        # apart on: three of its six names were missing, so every BLE relay
+        # session opened and closed put two rows in the Timeline. Harmless
+        # while nothing polled; a steady stream once `poll_ble_loop` existed.
+        #
+        # Stored BEFORE `apply_derived_state`, because whether the row is new
+        # decides whether it counts: a retried event updates the stored row
+        # and must not add a second visit or meal to the day's totals, nor
+        # fire its HA event entity again. With no store there is nothing to
+        # dedup against, so every event counts.
+        is_new = True
+        if self._event_store is not None and event_type not in codes.MQTT_TRANSPORT_TOPICS:
+            row = ingest.from_mqtt(device, event_type, params)
+            # Same rule as the HTTP path: only an identity we can prove is ours
+            # becomes `pet_id` (see ai/pets.py::attribute_event).
+            pet = None
+            if self._pet_registry is not None:
+                content = json.loads(row["content_json"]) if row.get("content_json") else {}
+                pet = await self._pet_registry.attribute_event(device, row, content)
+            _, is_new = await self._event_store.record_event(row)
+            if self._hub is not None:
+                self._hub.publish("event", device.petkit_id, f"{event_type} ({row['event_kind']})")
+            if pet and self._ha_publisher:
+                await self._ha_publisher.publish_pet_discovery(pet)
+                await self._ha_publisher.publish_pet_state(pet, self._event_store)
+
         # Last Clean / Last Visit / Last Feed / Pet Weight exist only as a
         # consequence of an event, so they are derived here rather than in any
         # state parser. Shared with the HTTP path (`handlers/stubs.py`) so the
         # two transports cannot drift — which is exactly what had happened.
-        apply_derived_state(device, event_type, content)
+        if is_new:
+            apply_derived_state(device, event_type, content)
 
         if event_type == "property":
             if params:
@@ -484,32 +518,6 @@ class MQTTBridge:
         elif event_type == "ble_response":
             await self._ble_relay._handle_ble_response(device, params)
 
-        # Persist to the event store, skipping pure protocol/telemetry messages:
-        # "property" is continuous state rather than a discrete event, and
-        # data_get / ble_response / ble_relay_* are plumbing. Mirrors
-        # http/handlers/stubs.py's dev_event_report handling so events land
-        # regardless of transport.
-        #
-        # Read from `codes.MQTT_TRANSPORT_TOPICS` rather than repeated here,
-        # which is what that constant asks for and what the two had drifted
-        # apart on: three of its six names were missing, so every BLE relay
-        # session opened and closed put two rows in the Timeline. Harmless
-        # while nothing polled; a steady stream once `poll_ble_loop` existed.
-        if self._event_store is not None and event_type not in codes.MQTT_TRANSPORT_TOPICS:
-            row = ingest.from_mqtt(device, event_type, params)
-            # Same rule as the HTTP path: only an identity we can prove is ours
-            # becomes `pet_id` (see ai/pets.py::attribute_event).
-            pet = None
-            if self._pet_registry is not None:
-                content = json.loads(row["content_json"]) if row.get("content_json") else {}
-                pet = await self._pet_registry.attribute_event(device, row, content)
-            await self._event_store.upsert_event(row)
-            if self._hub is not None:
-                self._hub.publish("event", device.petkit_id, f"{event_type} ({row['event_kind']})")
-            if pet and self._ha_publisher:
-                await self._ha_publisher.publish_pet_discovery(pet)
-                await self._ha_publisher.publish_pet_state(pet, self._event_store)
-
         # Fire the matching HA event entity (momentary). `content`, not
         # `params`: everything in the payload besides `event_type` becomes an
         # attribute of the HA event, and `params` is the transport envelope —
@@ -517,7 +525,7 @@ class MQTTBridge:
         # snapshot have no business in HA's logbook. The HTTP path
         # (http/handlers/stubs.py) passes the same decoded content.
         entity_suffix = entity_for_event(event_type, device.device_type)
-        if entity_suffix and self._ha_publisher:
+        if entity_suffix and self._ha_publisher and is_new:
             await self._ha_publisher.publish_event(device, entity_suffix, event_type, content)
 
         if self._ha_publisher:

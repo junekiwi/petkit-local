@@ -289,6 +289,19 @@ class EventStore:
     async def upsert_event(self, row: dict[str, Any]) -> int:
         """Insert an event, or update it in place if `event_uid` already
         exists (a device retrying the same dev_event_report/MQTT event)."""
+        event_id, _ = await self.record_event(row)
+        return event_id
+
+    async def record_event(self, row: dict[str, Any]) -> tuple[int, bool]:
+        """`upsert_event`, also saying whether the row is new.
+
+        Returns:
+            `(id, inserted)`. `inserted` is False for a retry of an event
+            already stored, which is the device's doing, not a second event:
+            anything that counts events as they arrive (`Times Used`, the
+            feeder's daily totals) or fires on them (HA event entities) must
+            skip it, or one visit is counted, and fired, once per retry.
+        """
         data = _accepted(row, _EVENT_COLUMNS)
         for json_key in ("content_json", "state_json"):
             if json_key in data and not isinstance(data[json_key], str):
@@ -303,12 +316,12 @@ class EventStore:
                 for key, value in data.items():
                     setattr(existing, key, value)
                 await session.flush()
-                return existing.id
+                return existing.id, False
 
             obj = Event(created_at=_created_at(row), **data)
             session.add(obj)
             await session.flush()
-            return obj.id
+            return obj.id, True
 
     async def get_event(self, event_id: int) -> dict[str, Any] | None:
         """One event row by primary key, or None if it no longer exists."""

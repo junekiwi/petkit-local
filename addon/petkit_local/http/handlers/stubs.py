@@ -204,7 +204,7 @@ async def handle_event_report(request: web.Request) -> web.Response:
     if pet_registry is not None:
         pet = await pet_registry.attribute_event(device, row, content or {})
 
-    await store.upsert_event(row)
+    _, is_new = await store.record_event(row)
 
     if pet and ha_publisher is not None:
         await ha_publisher.publish_pet_discovery(pet)
@@ -217,7 +217,10 @@ async def handle_event_report(request: web.Request) -> web.Response:
 
     # Applied AFTER the state block, so a derived timestamp is not overwritten
     # by the report the same request carried. Shared with `mqtt/bridge.py`.
-    apply_derived_state(device, row["event_type"], content or {})
+    # Only for a new row: a retry of a stored event would count the same visit
+    # or meal again.
+    if is_new:
+        apply_derived_state(device, row["event_type"], content or {})
     registry.mark_dirty()
 
     hub = request.app.get("event_hub")
@@ -231,7 +234,7 @@ async def handle_event_report(request: web.Request) -> web.Response:
         # Resolved through the code table, not by name: over HTTP `event_type`
         # is a numeric code whose meaning depends on the device category.
         entity_suffix = entity_for_event(row["event_type"], device.device_type)
-        if entity_suffix:
+        if entity_suffix and is_new:
             await ha_publisher.publish_event(device, entity_suffix, row["event_type"], content)
         await ha_publisher.publish_state(device)
         await ha_publisher.publish_availability(device)

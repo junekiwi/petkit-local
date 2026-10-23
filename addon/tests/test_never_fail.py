@@ -36,6 +36,9 @@ class _BrokenStore:
     async def upsert_event(self, row):
         raise self._exc
 
+    async def record_event(self, row):
+        raise self._exc
+
     async def upsert_media(self, row):
         raise self._exc
 

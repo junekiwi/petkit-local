@@ -202,6 +202,45 @@ async def test_an_http_event_report_populates_the_derived_sensors():
             await app["event_store"].close()
 
 
+async def test_a_retried_http_event_report_is_counted_once():
+    """A device retries a `dev_event_report` it got no answer to, and the
+    retry is the SAME event: the store keeps one row (`event_id` +
+    `event_type`), so the day's counters must move once, not once per retry.
+    They did move per retry -- a T4's Times Used and a D4's Times Dispensed
+    and Total Dispensed -- and the startup re-seed, which counts rows, then
+    disagreed with them after every restart."""
+    with tempfile.TemporaryDirectory() as tmp:
+        reg = DeviceRegistry()
+        t4 = reg.get_or_create(petkit_id=100, device_type="t4", serial_number="SN100")
+        d4 = reg.get_or_create(petkit_id=101, device_type="d4", serial_number="SN101")
+        app = create_app(reg, dict(CONFIG))
+        store = app["event_store"] = EventStore(Path(tmp) / "petkit.db")
+        client = TestClient(TestServer(app))
+        await client.start_server()
+        try:
+            for _ in range(2):
+                await client.post("/6/t4/dev_event_report", headers=HDR,
+                                  data={"event_type": "10", "event_id": "e1",
+                                        "content": '{"pet_weight": 4200}'})
+                await client.post("/6/d4/dev_event_report",
+                                  headers={"X-Device": "id=101&sn=SN101"},
+                                  data={"event_type": "2", "event_id": "f1",
+                                        "content": '{"day": 20261023, "real_amount": 10}'})
+            assert len(await store.query_timeline(device_id=100)) == 1
+            assert t4.state["usedTimes"] == 1
+            assert d4.state["feedState"]["times"] == 1
+            assert d4.state["feedState"]["realAmountTotal"] == 10
+
+            # A different visit still counts.
+            await client.post("/6/t4/dev_event_report", headers=HDR,
+                              data={"event_type": "10", "event_id": "e2",
+                                    "content": '{"pet_weight": 4200}'})
+            assert t4.state["usedTimes"] == 2
+        finally:
+            await client.close()
+            await store.close()
+
+
 def test_an_mqtt_event_applies_the_state_snapshot_it_carries():
     """The N60 reset that exposed this: the device announced a changed
     sprayResetTime only inside liquid_reset_over, and the property stream was

@@ -63,6 +63,24 @@ async def test_pet_out_event_is_persisted_to_store():
         assert rows[0]["parent_event"] == "r1"
 
 
+async def test_a_retried_mqtt_event_counts_and_fires_once():
+    """The same `event_id` + topic twice is one event retried: the store
+    updates its row in place, and neither the feeder's daily totals nor the
+    HA event entity may see it a second time."""
+    with tempfile.TemporaryDirectory() as tmp:
+        reg, dev, pub, store, hub, pet_registry, bridge = _setup(tmp)
+        feeder = reg.get_or_create(petkit_id=11, device_type="d4sh", serial_number="SN11")
+        msg = {"params": {"event_id": "11_1785276736",
+                          "content": json.dumps({"day": 20261023, "real_amount1": 10,
+                                                 "real_amount2": 5})}}
+        for _ in range(2):
+            await bridge._handle_event(feeder, "feed_over", msg)
+        assert len(await store.query_timeline(device_id=11)) == 1
+        assert feeder.state["feedState"]["times"] == 1
+        assert feeder.state["feedState"]["realAmountTotal"] == 15
+        assert [e[2] for e in pub.events] == ["feed_over"]
+
+
 async def test_property_event_is_not_persisted():
     with tempfile.TemporaryDirectory() as tmp:
         reg, dev, pub, store, hub, pet_registry, bridge = _setup(tmp)

@@ -114,6 +114,14 @@
   its broker name the way they do. The Provision tab no longer points at a
   hosted provisioning page when Home Assistant is plain HTTP.
 
+- **A retried event is counted once.** A device that gets no answer to an
+  event report sends the same one again, and the event store kept one row
+  for it, but Times Used (T4), Times Dispensed and Total Dispensed (feeders)
+  moved once per retry, the HA event entity fired again, and the counts then
+  dropped back after a restart, which re-counts the stored rows. A report the
+  store already holds now updates its row and nothing else, on either
+  transport.
+
 ## 2.1.4 — 2026-10-23
 
 - **A litter box without a camera names the cat by weight.** A T4 cannot
