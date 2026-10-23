@@ -179,6 +179,19 @@ def test_the_same_code_reads_differently_per_device_category():
     assert decode.event_label("2", {"id": 7, "day": 20260727}, "d4h") == "Feeding done"
 
 
+def test_a_d4h_holding_back_a_meal_for_a_full_bowl_is_a_skip_not_a_failure():
+    """Upstream issue #36: a D4H reports its surplus-control skip as
+    `result: 8` with `err_code: 10`, and `result` alone reads as a failed
+    dispense. The same `result` with any other `err_code` still does."""
+    skip = {"manual": 0, "id": "s_20260916_48300", "real_amount": 0,
+            "result": 8, "err_code": 10, "surplus_standard": 2}
+    for event_type in ("feed_over", "2"):
+        assert decode.event_label(event_type, skip, "d4h") == \
+            "Feeding skipped (bowl not empty)"
+    assert decode.event_label("feed_over", {**skip, "err_code": 8}, "d4h") == \
+        "Feeding failed (nothing dispensed)"
+
+
 def test_unknown_code_still_reads_as_something():
     assert decode.event_label("999", {}) == "Event 999"
     assert decode.event_label("", {}) == "Event"

@@ -1296,6 +1296,24 @@ FEED_RESULT: dict[int, str] = {
     11: "failed (empty run)",
 }
 
+#: `(result, err_code)` pairs whose outcome is not the one `result` alone
+#: names, mapped to the `FEED_RESULT` key that does name it.
+#:
+#: (8, 10) inferred — a D4H (fw 867) skipping a scheduled meal because the bowl
+#:     was not empty reports `result: 8, err_code: 10, real_amount: 0` with
+#:     `surplus_standard: 2` (upstream issue #36, one owner's capture). That is
+#:     the surplus-control skip a D4SH reports as `result: 10`, not a failed
+#:     dispense, and labelled from `result` alone it read "failed (nothing
+#:     dispensed)" on every meal the feeder rightly held back.
+FEED_RESULT_BY_ERR_CODE: dict[tuple[int, int], int] = {
+    (8, 10): 10,
+}
+
+
+def feed_result(result: int, err_code: int | None) -> int:
+    """The `FEED_RESULT` key for a feed outcome, `err_code` considered."""
+    return FEED_RESULT_BY_ERR_CODE.get((result, err_code), result)
+
 
 # --- NS7: err{} fault bits -------------------------------------------------
 # A state report carries an `err` OBJECT of named 0/1 bits, and the names are

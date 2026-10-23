@@ -138,6 +138,12 @@
   audio, and the periodic stream check reads every model's `sub.flv` rather
   than its main stream.
 
+- **A D4H holding back a meal because the bowl is full reads as a skip**
+  (upstream issue #36). It reports that as `result: 8` with `err_code: 10`,
+  and the Timeline read the `result` alone: "Feeding failed (nothing
+  dispensed)" on every meal the feeder rightly skipped. It now reads "Feeding
+  skipped (bowl not empty)".
+
 ## 2.1.4 — 2026-10-23
 
 - **A litter box without a camera names the cat by weight.** A T4 cannot

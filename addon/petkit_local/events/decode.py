@@ -645,7 +645,9 @@ def event_label(event_type: str | None,
             label = f"{trigger} {noun}" if trigger else noun
         else:
             if code.kind == codes.KIND_FEEDING:
-                outcome, _ = _enum(_FEED_RESULT, result, "result {n}")
+                err_code = to_int((content or {}).get("err_code"), None)
+                outcome, _ = _enum(_FEED_RESULT, codes.feed_result(result, err_code),
+                                   "result {n}")
             else:
                 outcome, _ = _result_field(result)
                 if result == 3 and (content or {}).get("kitten"):
