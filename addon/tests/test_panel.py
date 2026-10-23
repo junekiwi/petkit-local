@@ -469,11 +469,19 @@ async def test_action_and_entity_forms_have_the_same_side_effects():
     Compared on the SHAPE of what each left behind — which config keys, which
     consumables — rather than the values, because a reset stamps `time.time()`
     and the envelope carries an epoch id, so two calls a millisecond apart are
-    legitimately different.
+    legitimately different. A feed's `params.id` is the same story: it counts
+    the seconds since midnight (`_feed_id`), so two presses that straddle a
+    second differ there and nowhere else.
     """
     def _shape(dev):
         cfg = {k: sorted(v) if isinstance(v, dict) else "set" for k, v in dev.config.items()}
         return sorted(cfg.items())
+
+    def _params(out):
+        params = dict(out["envelope"].get("params") or {})
+        if "id" in params:
+            params["id"] = "set"
+        return params
 
     for device_type in ("t5", "t6", "d4sh", "w7h"):
         probe = DeviceRegistry().get_or_create(petkit_id=1, device_type=device_type)
@@ -498,7 +506,7 @@ async def test_action_and_entity_forms_have_the_same_side_effects():
                 assert oa.get("suffix") == ob.get("suffix"), f"{device_type}/{key}"
                 if "envelope" in oa and "envelope" in ob:
                     assert oa["envelope"].get("method") == ob["envelope"].get("method")
-                    assert oa["envelope"].get("params") == ob["envelope"].get("params")
+                    assert _params(oa) == _params(ob), f"{device_type}/{key}"
                 assert _shape(reg_a.get(1)) == _shape(reg_b.get(1)), \
                     f"{device_type}/{key} left different state behind"
             finally:
