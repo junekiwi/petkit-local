@@ -99,12 +99,16 @@ other model below is inference until the same is true of it.
 |---|---|---|---|
 | Purobot Max Pro 2 | T5 | ✅ | ✅ |
 | Purobot Ultra | T6 | ✅ | ✅ |
+| Pura Max | T4 | — | — |
 | EverSweet Ultra AI | W7H | ✅ | ✅ |
 | EverSweet Max Cordless | CTW3 † | — | — |
 | YumShare Dual-Hopper | D4SH | ✅ | — |
+| Fresh Element Solo | D4 | — | — |
 | Fresh Element Gemini | D4S | — | — |
 
 Confirmed is not the same as complete: there can still be bugs, and features that are missing.
+The Pura Max (T4) and Fresh Element Solo (D4) run on this fork over HTTP heartbeats, never MQTT
+(see the note at the top).
 The D4S Gemini has completed a local one-portion feed over HTTP heartbeats.
 Leave the default device-facing MQTT TLS listener enabled; the unit tested here
 failed to resume heartbeats after one restart with it disabled.
@@ -127,11 +131,9 @@ to sit at "unknown".
 | Product | Codename | Camera | On-device AI |
 |---|---|---|---|
 | Pura X | T3 | — | — |
-| Pura Max | T4 | — | — |
 | YumShare Solo | D4H | ✅ | — |
 | YumShare Solo 2 | D4H | ✅ | ✅ |
 | YumShare Dual-Hopper 2 | D4SH | ✅ | ✅ |
-| Fresh Element Solo | D4 | — | — |
 | Feeder D3 | D3 | — | — |
 | Feeder / Feeder Mini | feeder, feedermini ‡ | — | — |
 | Pura Air smart spray | K2, K3 † | — | — |
