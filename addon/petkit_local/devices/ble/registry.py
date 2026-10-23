@@ -318,15 +318,20 @@ def cloud_bindings(endpoint: str, payload: Any, parent_id: int) -> list[dict[str
         return [f for f in found if f]
 
     # Both remaining shapes describe one K3. `dev_device_info` nests it under
-    # `k3Device` beside the parent's own fields; `dev_k3_device_info` is the K3
-    # itself, so its fields sit at the top of `result`.
-    node = result.get("k3Device") if endpoint == "dev_device_info" else result
+    # `k3Device` beside the parent's own fields, with its parameters in
+    # `settings.k3Config`. PetKit's `dev_k3_device_info` to a T4 nests it too,
+    # `{"k3Config": {"config": ...}, "k3Device": {...}}` (proxied 2026-10-22);
+    # the flat shape, the K3's fields at the top of `result`, is what this
+    # add-on serves and is still read.
+    nested = result.get("k3Device")
+    node = nested if endpoint == "dev_device_info" or isinstance(nested, dict) else result
     binding = _cloud_binding(node, parent_id, ble_type="k3")
     if not binding:
         return []
     binding.pop("scan_type", None)
 
-    config = dig(result, "settings", "k3Config", "config")
+    config = (dig(result, "settings", "k3Config", "config")
+              or dig(result, "k3Config", "config"))
     if isinstance(config, dict) and config:
         binding["config"] = dict(config)
 
@@ -334,7 +339,7 @@ def cloud_bindings(endpoint: str, payload: Any, parent_id: int) -> list[dict[str
     # block, and the six keys of `k3Config.config` are the parent's copy of its
     # operating parameters. Merging them would put `liquidLackSwitch` inside a
     # `k3Config` the firmware parses key by key for something else.
-    settings = result.get("settings") if endpoint == "dev_k3_device_info" else None
+    settings = node.get("settings") if endpoint == "dev_k3_device_info" else None
     if isinstance(settings, dict):
         held = {k: settings[k] for k in K3_SETTING_KEYS if k in settings}
         if held:

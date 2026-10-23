@@ -52,6 +52,7 @@ from petkit_local.utils.paths import UnsafePathError, safe_join
 from petkit_local.web.api.ble import (
     api_ble_accessories, api_ble_command, api_ble_delete, api_ble_import, api_ble_poll,
 )
+from petkit_local.web.api.config_import import api_import_config
 from petkit_local.web.api.devices import (
     api_ai_settings, api_capabilities, api_device_delete, api_device_detail,
     api_device_log_settings, api_timezone,
@@ -229,6 +230,7 @@ def create_panel_app(registry: DeviceRegistry, ble_registry: BLERegistry | None,
     app.router.add_get("/api/ble", api_ble_accessories)
     app.router.add_post("/api/ble", api_ble_accessories)
     app.router.add_post("/api/ble/import", api_ble_import)
+    app.router.add_post("/api/import", api_import_config)
     app.router.add_delete("/api/ble/{id}", api_ble_delete)
     app.router.add_post("/api/ble/{id}/command", api_ble_command)
     app.router.add_post("/api/ble/{id}/poll", api_ble_poll)

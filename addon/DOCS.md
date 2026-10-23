@@ -142,6 +142,39 @@ work on either. MQTT TLS Bypass and Local Storage rewrite machine code, and
 Persistent SSH installs a prebuilt binary, so those three are MIPS-only for now
 and the tab says so per patch rather than hiding itself.
 
+## Importing a device's configuration
+
+A device moved here keeps its settings and schedules only if this app already
+has them when it first asks. A litter box reads its whole settings block at boot
+and adopts what it is served, so an unknown device gets this app's defaults; a
+feeder that fetches an empty schedule stops feeding. **Import first, then
+redirect the device.**
+
+**Setup → Import configuration** takes a JSON file of PetKit's own replies to
+each device, keyed by the endpoint that produced them, with or without their
+`{"result": ...}` wrapper — what a capture of the device talking to PetKit
+holds:
+
+```json
+{"devices": [
+  {"type": "t4",
+   "dev_signup":         {"result": {"id": 300000001, "sn": "...", "mac": "...", "secret": "..."}},
+   "dev_device_info":    {"result": {"id": 300000001, "settings": {"...": "..."}}},
+   "dev_schedule_get":   {"result": [{"id": 1, "time": 480, "type": 0, "repeats": "1,2,3,4,5,6,7"}]},
+   "dev_multi_config":   {"result": {"lightMultiRange": "{\"lightMultiRange\":[[0,1440]]}"}},
+   "dev_k3_device_info": {"result": {"k3Config": {"config": {}}, "k3Device": {"id": 2, "mac": "...", "secret": "..."}}}},
+  {"type": "d4",
+   "dev_signup":   {"result": {"id": 300000002, "settings": {"factor": 10}}},
+   "dev_feed_get": {"result": {"schedule": [{"re": "1,2,3,4,5,6,7", "it": [{"id": "n_23400", "t": 23400, "a": 10}]}]}}}
+]}
+```
+
+Any reply may be left out. The device is created if it has not registered yet,
+and an existing one adopts the imported values. `dev_signup`'s `secret` is kept
+too, so the device is handed back the signing secret it already has. A Pura
+Air in `dev_k3_device_info` (or `dev_device_info`'s `k3Device`) is paired to
+its parent. The same import is `POST /api/import` on the panel's port.
+
 ## The camera in Home Assistant
 
 Apply **Local Camera Streaming** and the bundled go2rtc republishes the

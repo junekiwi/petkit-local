@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- **Import a device's configuration.** Setup → Import configuration (and
+  `POST /api/import`) takes PetKit's own replies to a device — signup, device
+  info, feeding or cleaning schedules, light and quiet-hour ranges, the Pura
+  Air — and stores each where that endpoint is answered from, creating the
+  device if it has not registered yet. Done before a device is redirected, it
+  keeps everything it had: a litter box adopts whatever settings it is served
+  at boot, so without it a T4 took this app's defaults, and a feeder fetching
+  an empty schedule stopped feeding. See *Importing a device's configuration*.
+- **A Pura Air is found in PetKit's reply to a T4.** PetKit nests the spray in
+  `dev_k3_device_info` under `k3Device`, with its parameters in `k3Config`
+  (proxied 2026-10-22); read flat, the reply described nothing, which is why
+  *Import from PetKit* paired nothing on a T4 (issue #17). Both shapes are read.
 - **A D4's meal reports keep their content.** The feeder wraps `content` and
   `state` of its `dev_event_report` in one more pair of quotes, unescaped, so
   both decoded to nothing: every meal arrived with no amount, result or error

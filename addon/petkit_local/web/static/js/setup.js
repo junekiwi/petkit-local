@@ -130,7 +130,7 @@ async function loadSetup() {
     <table><tbody>
       <tr><td>Version</td><td><code>${esc(i.version || '?')}</code></td><td class="mut">The code actually running. If an update did not take effect this still shows the old number, which is the quickest way to tell a stale build from a real bug.</td></tr>
       <tr><td>API URL (apiServers)</td><td><code>${esc(i.api_url)}</code></td><td class="mut">The URL a device calls. Most models take it over Bluetooth from the Provision tab; the oldest, which have no Bluetooth setup, need a DNS redirect.</td></tr>
-      <tr><td>MQTT host</td><td><span class="badge ok">automatic</span></td><td class="mut">No global setting — every device is handed our own broker (derived from the API URL host). A patched <code>ctrl</code> connects over MQTT; an unpatched one simply heartbeats over HTTP (it does not crash). Commands fall back to the HTTP heartbeat when there\'s no live MQTT session.</td></tr>
+      <tr><td>MQTT host</td><td><span class="badge ok">automatic</span></td><td class="mut">No global setting — every device is handed our own broker (derived from the API URL host), except the T3/T4/D4, which are kept on HTTP (<code>esp32_http_only</code>). A patched <code>ctrl</code> connects over MQTT; an unpatched one simply heartbeats over HTTP (it does not crash). Commands fall back to the HTTP heartbeat when there\'s no live MQTT session.</td></tr>
       <tr><td>MQTT broker port</td><td><code>${esc(i.mqtt_port)}</code>${i.mqtt_tls ? ` · TLS <code>${esc(i.mqtt_tls_port)}</code>` : ''}</td><td class="mut">TLS cert ${i.cert_exists ? '<span class="badge ok">present</span>' : '<span class="badge bad">missing</span>'}${help('The self-signed certificate the broker presents. "missing" means the file named by cert_path is not there, and a device that expects TLS will not connect.')}</td></tr>
       <tr><td>MQTT auth</td><td>${i.strict_auth ? '<span class="badge warn">strict HMAC</span>' : '<span class="badge">accept-all</span>'}</td><td class="mut">Accept-all is fine for a trusted LAN; strict enforces the Aliyun HMAC-SHA256 sign.</td></tr>
       <tr><td>Bridge → HA</td><td>${
@@ -158,9 +158,49 @@ async function loadSetup() {
       <tr><td>Blocked attempts${help('How long to keep the record of instructions the real cloud sent that we refused. Rows are tiny and rare, so a long window costs almost nothing and is worth having if you ever need to show what happened.')}</td><td class="mut">—</td><td><input type="number" id="ret_blocked_days" value="${esc((rd.blocked || {}).max_days ?? '')}" min="0" style="width:100px"></td></tr>
     </tbody></table>
     <div style="margin-top:10px"><button class="act" data-action="save-retention">Save retention settings</button></div>
+  </div>
+  <div class="card"><h3>Import configuration${help(
+    'A JSON file of PetKit’s own replies to each device — dev_signup, dev_device_info, dev_feed_get, dev_schedule_get, dev_multi_config, dev_k3_device_info — as a capture of the device talking to PetKit holds them. The format is in the documentation.',
+  )}</h3>
+    <p class="sub">Settings, schedules and the Pura Air pairing PetKit holds for a device, so it keeps them here. Import <b>before</b> redirecting the device: a litter box adopts whatever settings it is served at boot, and a feeder that fetches an empty schedule stops feeding.</p>
+    <input type="file" id="importFile" accept=".json,application/json">
+    <button class="act" data-action="import-config">Import</button>
+    <div id="importResult" style="margin-top:10px"></div>
   </div>`;
   if (on) loadBlocked(i.redactions || {});
 }
+onAction('import-config', async el => {
+  const file = document.getElementById('importFile').files[0];
+  if (!file) return toast('Choose a file first');
+  let doc;
+  try {
+    doc = JSON.parse(await file.text());
+  } catch {
+    return toast('Error: that file is not JSON');
+  }
+  el.disabled = true;
+  const r = await api('import', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(doc),
+  });
+  el.disabled = false;
+  if (r.error) return toast('Error: ' + r.error);
+  // One line per device, refusals and skipped parts included: an import that
+  // quietly drops a schedule is worse than one that says so.
+  document.getElementById('importResult').innerHTML = (r.devices || [])
+    .map(d =>
+      d.error
+        ? `<div><span class="badge bad">refused</span> ${esc(d.type || '?')}: ${esc(d.error)}</div>`
+        : `<div><span class="badge ok">${d.created ? 'added' : 'updated'}</span> ${esc(d.type)} ${esc(d.id)}: ${esc(d.imported.join(', ') || 'nothing')}${
+            d.skipped.length
+              ? ` <span class="mut">— skipped ${esc(d.skipped.map(s => `${s.part} (${s.reason})`).join('; '))}</span>`
+              : ''
+          }</div>`,
+    )
+    .join('');
+  toast('Import done');
+});
 onChange('save-setting', el => saveSetting(el.dataset.key, el.checked));
 // "custom…" only reveals the text box; nothing is saved until a real value is
 // picked, so switching to it does not blank a working upstream.
