@@ -100,7 +100,7 @@ def create_app(registry: DeviceRegistry, config: dict) -> web.Application:
         app.router.add_route("*", f"{p}/dev_signup", handle_signup)
         # All three iot_device_info endpoints share one handler. It answers
         # ali-wrapped, as the cloud does for a D4SH on dev_iot_device_info,
-        # except for the ESP32 litter boxes, which the cloud answers flat
+        # except for the ESP32 models, which are answered flat
         # (`iot_device_info.FLAT_CREDENTIAL_TYPES`).
         app.router.add_route("*", f"{p}/dev_iot_device_info", handle_iot_device_info)
         app.router.add_route("*", f"{p}/dev_only_iot_device_info", handle_iot_device_info)

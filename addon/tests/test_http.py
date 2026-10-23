@@ -572,6 +572,22 @@ async def test_d4_signup_and_device_info_carry_the_cloud_settings_block():
         await client.close()
 
 
+async def test_d4s_iot_device_info_returns_flat_esp32_credentials():
+    """A live D4S (fw 1.198) completed provisioning on the flat block. It is
+    not kept on HTTP (`DEVICE_TYPES_DERIVED_BROKER`), so it gets our broker."""
+    reg = DeviceRegistry()
+    client = await _client(reg)
+    try:
+        await client.post("/6/d4s/dev_signup", headers=HDR)
+        r = await client.post("/6/d4s/dev_iot_device_info", headers=HDR)
+        result = (await r.json())["result"]
+        assert "ali" not in result
+        assert result["productKey"] and result["deviceSecret"]
+        assert result["mqttHost"] == "server"
+    finally:
+        await client.close()
+
+
 async def test_mqtt_host_is_always_our_broker():
     # No global mqtt_host setting and no HTTP-only fallback: every device is
     # handed our own broker host (derived from api_url), every time.

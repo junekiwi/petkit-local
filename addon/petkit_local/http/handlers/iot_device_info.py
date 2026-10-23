@@ -29,11 +29,12 @@ log = logging.getLogger(__name__)
 #: LocalKit-patched firmware reading the wrapped block (#34), is not stock
 #: firmware. The D4 joined on a proxied capture of PetKit's own reply to two
 #: Fresh Element Solos (fw 1.267, 2026-10-22), flat exactly like the T4's beside
-#: them. Deliberately NOT
+#: them. A Fresh Element Gemini (D4S, fw 1.198) completed provisioning on the
+#: flat block (upstream PR #43). Deliberately NOT
 #: `not device.is_next_gen`: that complement also holds the other ESP32 feeders,
 #: the BLE-only codenames and any model not yet listed, none of which has
 #: evidence either way, so they keep the wrapped block the D4SH capture showed.
-FLAT_CREDENTIAL_TYPES = frozenset({"t3", "t4", "d4"})
+FLAT_CREDENTIAL_TYPES = frozenset({"t3", "t4", "d4", "d4s"})
 
 
 def self_mqtt_host(config: dict) -> str:

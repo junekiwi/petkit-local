@@ -77,6 +77,16 @@
   only the W7H needed it. Each learned value is logged (`learned
   <field>=<value> from ...`). Nothing changes with proxy mode off.
 
+- **Fresh Element Gemini (D4S) support** (Ellie, upstream PR #43). A live
+  D4S (fw 1.198) completed provisioning on the flat credential block and fed
+  one portion over the HTTP heartbeat when sent `amount1`/`amount2`, so it now
+  gets both: the flat `dev_iot_device_info` the T3, T4 and D4 get, and the
+  dual-hopper feed buttons, portion numbers and `a1`/`a2` schedule of a D4SH.
+  It is named a Fresh Element Gemini, not "Feeder D4s". Unlike the D4 it is
+  not kept on HTTP by `esp32_http_only`, for want of evidence that it builds
+  its broker name the way they do. The Provision tab no longer points at a
+  hosted provisioning page when Home Assistant is plain HTTP.
+
 ## 2.1.4 — 2026-10-23
 
 - **A litter box without a camera names the cat by weight.** A T4 cannot

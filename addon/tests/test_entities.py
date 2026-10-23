@@ -8,7 +8,7 @@ VALID_COMPONENTS = {
     "event", "text", "image", "time",
 }
 
-DEVICE_TYPES = ["t5", "t6", "t7", "t3", "t4", "d4h", "d4sh", "d3", "d4", "w7h", "w5", "k2", "k3"]
+DEVICE_TYPES = ["t5", "t6", "t7", "t3", "t4", "d4h", "d4sh", "d3", "d4", "d4s", "w7h", "w5", "k2", "k3"]
 
 # Golden entity counts per device type. An entity's identity in Home Assistant
 # is its unique_id, so silently dropping, adding or renaming one orphans it in
@@ -70,7 +70,9 @@ EXPECTED_ENTITY_COUNTS = {
     # the three do-not-disturb windows. The seven are cleared from HA, not just
     # left unannounced (`CategorySpec.model_retired`).
     "t3": 47, "t4": 47, "t5": 83, "t6": 90, "t7": 83,
-    "feeder": 25, "feedermini": 25, "d3": 25, "d4": 25, "d4s": 25,
+    # d4s +4 on 2026-10-08: a live D4S feeds with `amount1`/`amount2`, so it
+    # gets the dual-hopper feed buttons and portion numbers (upstream PR #43).
+    "feeder": 25, "feedermini": 25, "d3": 25, "d4": 25, "d4s": 29,
     # 2026-08-12: replaced `enable_feed_video` button with individual switches
     # (feed_picture, eat_video, voice_prompt, voice_disturb_mode, disturb_mode)
     # and added selected_sound number + play_sound button. Net +6.

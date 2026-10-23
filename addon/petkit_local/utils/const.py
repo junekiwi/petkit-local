@@ -58,12 +58,10 @@ DEVICE_TYPES_LITTER_USED_TIMES_UNREPORTED = {"t4"}
 # hoppers reported `real_amount: 0` for a command that was well formed and
 # asked for nothing.
 #
-# Membership is by codename because that IS the test the firmware makes: the
-# string it compares is its own model, and `d4sh` is the codename for the
-# YumShare Dual-Hopper. The neighbouring branch compares "D4H" and reads
-# `amount`, which is why the single-hopper path below must stay exactly as it
-# was -- see `ha/commands.py::_feed`.
-DEVICE_TYPES_FEEDER_DUAL = {"d4sh"}
+# D4SH firmware reads `amount1` and `amount2`; a live D4S on firmware 1.198
+# dispensed one portion when sent `amount1: 1, amount2: 0` over HTTP heartbeat.
+# The D4H firmware instead reads `amount` -- see `ha/commands.py::_feed`.
+DEVICE_TYPES_FEEDER_DUAL = {"d4s", "d4sh"}
 
 # Feeders running the embedded-Linux `ctrl` we have read (the D4SH 867 image
 # serves both D4SH and D4H). Everything taken from that disassembly is gated on
@@ -107,7 +105,11 @@ DEVICE_TYPES_BLE_ONLY = {"w4", "w5", "ctw2", "ctw3", "k2", "k3"}
 # certificate. Issue #35 reports the same name-building on a T3. With the
 # `esp32_http_only` option (the default) they are handed
 # `payloads.HTTP_ONLY_PRODUCT_KEY` and stay on the HTTP heartbeat. The other
-# ESP32 feeders probably behave alike, but nothing has shown it.
+# ESP32 feeders probably behave alike, but nothing has shown it. The D4S is
+# left out on purpose: the one tested (fw 1.198, upstream PR #43) was handed
+# our own broker, never opened an MQTT session and stayed on the heartbeat --
+# but went into a signup loop with `mqtt_tls` off, so it may dial what it is
+# handed after all, and a host that refuses it could be what breaks it.
 DEVICE_TYPES_DERIVED_BROKER = {"t3", "t4", "d4"}
 
 DEVICE_TYPES_CAMERA = {"t5", "t6", "t7", "d4h", "d4sh", "w7h"}
@@ -159,10 +161,8 @@ DEVICE_TYPES_AI = {"t5", "t6", "t7", "w7h"}
 #   * `k2` — the generation before the K3, named by analogy. PetKit's own listing
 #     for it could not be found.
 #
-# `d4` was "Feeder D4" — the codename dressed up as a product, which is what
-# this table exists to avoid. Its owner named it in issue #3: a **Fresh Element
-# Solo**. `d3` and `d4s` are still the codename echoed back, for want of anybody
-# to ask; if you own one, the name on the box is the whole contribution needed.
+# `d4` was named by its owner in issue #3. The D4S name was verified on a
+# Fresh Element Gemini during local provisioning.
 #
 # `k2`/`k3` were "Air Purifier K2"/"Air Purifier K3" here, which is wrong and
 # actively misleading: PetKit also sells real air purifiers. These are the Pura
@@ -174,7 +174,7 @@ DEVICE_NAMES = {
     "feedermini": "Feeder Mini",
     "d3": "Feeder D3",
     "d4": "Fresh Element Solo",
-    "d4s": "Feeder D4s",
+    "d4s": "Fresh Element Gemini",
     "d4h": "YumShare Solo",
     "d4sh": "YumShare Dual-Hopper",
     "t3": "Pura X",
