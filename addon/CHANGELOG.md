@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.1.6 — 2026-10-23
 
 - **A device that comes back after a restart is available in HA again.**
   Every device starts offline, and a model on HTTP whose first contact was a
