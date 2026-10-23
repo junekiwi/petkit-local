@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.1.5 — 2026-10-23
 
 - **Home Assistant event entities fire** (shinn-y, upstream PR #26). HA reads
   an MQTT event's rendered payload as a JSON object carrying `event_type`, and
