@@ -151,7 +151,7 @@ def ensure_self_signed(cert_path: str, key_path: str,
                 # Not an address, so it is a name — and a name is exactly the
                 # case an IP SAN can never satisfy.
                 san_names.append(x509.DNSName(host))
-        now = datetime.datetime.utcnow()
+        now = datetime.datetime.now(datetime.timezone.utc)
         cert = (
             x509.CertificateBuilder()
             .subject_name(name).issuer_name(name)
