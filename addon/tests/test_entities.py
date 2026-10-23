@@ -232,9 +232,10 @@ def test_event_entity_options_accept_every_event_the_device_can_fire():
     pins the two together: every MQTT event name that fires an entity a
     device announces must be in that entity's list. A real T6's `light_over`
     was dropped exactly this way — it fires `cleaning_event`, whose
-    hand-written list stopped at the cycles a T3 has."""
+    hand-written list stopped at the cycles a T3 has. Over HTTP the numeric
+    code is what fires, so the device's category table is checked too."""
     from petkit_local.events import codes
-    from petkit_local.events.normalize import KIND_TO_ENTITY
+    from petkit_local.events.normalize import KIND_TO_ENTITY, entity_for_event
 
     for dt in DEVICE_TYPES:
         d = Device(device_type=dt, petkit_id=1, serial_number="SN")
@@ -251,3 +252,10 @@ def test_event_entity_options_accept_every_event_the_device_can_fire():
                 continue
             assert name in events[key].options, (
                 f"{dt}: '{name}' fires '{key}' but its event_types omit it")
+        category = codes.category_of(dt) or codes.DEFAULT_HTTP_CATEGORY
+        for code in codes.HTTP_CODES_BY_CATEGORY[category]:
+            key = entity_for_event(code, dt)
+            if key is None or key not in events:
+                continue
+            assert code in events[key].options, (
+                f"{dt}: HTTP code '{code}' fires '{key}' but its event_types omit it")

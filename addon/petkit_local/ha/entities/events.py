@@ -7,9 +7,10 @@ event_type onto one of the entities below and fires it non-retained, so an HA
 restart does not replay a visit that happened yesterday.
 
 `options` is the list of event_types HA will accept: an event_type fired but
-not listed is silently dropped by HA. It is therefore DERIVED from
-`codes.MQTT_EVENT_TOPICS` — the same table the firing side dispatches on —
-filtered by the entity's kind and the device family the list serves. A
+not listed is silently dropped by HA. It is therefore DERIVED from the codes
+tables the firing side dispatches on (`codes.event_type_names`) — the MQTT
+names, and the numeric codes an HTTP device fires as they are — filtered by the
+entity's kind and the device family the list serves. A
 hand-written copy is what used to be here, and it had drifted: a real T6's
 `light_over` fired into a `cleaning_event` whose declared list stopped at the
 cycles a T3 has. The device event_type strings themselves are not
@@ -23,19 +24,19 @@ from petkit_local.ha.discovery import EntityDef
 LITTER_EVENTS = [
     EntityDef(component="event", key="toilet_event", name="Toilet Event",
               icon="mdi:cat",
-              options=codes.mqtt_event_names(codes.KIND_TOILET, codes.LITTER)),
+              options=codes.event_type_names(codes.KIND_TOILET, codes.LITTER)),
     EntityDef(component="event", key="cleaning_event", name="Cleaning Event",
               icon="mdi:broom",
-              options=codes.mqtt_event_names(codes.KIND_CLEANING, codes.LITTER)),
+              options=codes.event_type_names(codes.KIND_CLEANING, codes.LITTER)),
     EntityDef(component="event", key="error_event", name="Error Event",
               icon="mdi:alert",
-              options=codes.mqtt_event_names(codes.KIND_ERROR, codes.LITTER)),
+              options=codes.event_type_names(codes.KIND_ERROR, codes.LITTER)),
 ]
 
 FEEDER_EVENTS = [
     EntityDef(component="event", key="feeding_event", name="Feeding Event",
               icon="mdi:food",
-              options=codes.mqtt_event_names(codes.KIND_FEEDING, codes.FEEDER)),
+              options=codes.event_type_names(codes.KIND_FEEDING, codes.FEEDER)),
 ]
 
 #: The W7H's events. No other fountain publishes any: the Bluetooth EverSweets
@@ -50,14 +51,14 @@ FEEDER_EVENTS = [
 FOUNTAIN_W7H_EVENTS = [
     EntityDef(component="event", key="cleaning_event", name="Work Event",
               icon="mdi:water-sync",
-              options=codes.mqtt_event_names(codes.KIND_CLEANING,
+              options=codes.event_type_names(codes.KIND_CLEANING,
                                              codes.FOUNTAIN_NEXT_GEN)),
     EntityDef(component="event", key="drinking_event", name="Drinking Event",
               icon="mdi:cup-water",
-              options=codes.mqtt_event_names(codes.KIND_DRINKING,
+              options=codes.event_type_names(codes.KIND_DRINKING,
                                              codes.FOUNTAIN_NEXT_GEN)),
     EntityDef(component="event", key="error_event", name="Error Event",
               icon="mdi:alert",
-              options=codes.mqtt_event_names(codes.KIND_ERROR,
+              options=codes.event_type_names(codes.KIND_ERROR,
                                              codes.FOUNTAIN_NEXT_GEN)),
 ]

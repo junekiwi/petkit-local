@@ -11,6 +11,13 @@
   `params` with the device's signed `XDevice` in them. Each entity's
   `event_types` is derived from the codes table, so a newly mapped event
   cannot be dropped for being undeclared.
+- **Event entities fire for a device on HTTP too.** A T3, T4 or D4, or any model
+  before it reaches the broker, reports an event as its numeric code (`10` is
+  a litter-box visit), and that code is what fires. No entity declared one,
+  so HA dropped every such event after the fix above as before it. Each event
+  entity now also lists the codes of its own device category, so on a T4
+  the Toilet Event fires with `event_type` `10`, the Cleaning Event with `5`,
+  and so on.
 - **Scheduled feeds fire at the right local time** (Balint Toth, upstream PR
   #30). The firmware sets its clock's timezone from the `time` of
   `dev_state_report`, which was always sent at `+0000`, so a UTC+2 feeder ran
