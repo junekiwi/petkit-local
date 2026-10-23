@@ -56,7 +56,8 @@ def test_every_observed_code_is_classified_and_labelled():
 
 
 def test_unmapped_codes_stay_unmapped():
-    """12/19/22/23 are in neither the firmware RE nor any capture.
+    """22/23 are in neither the firmware RE nor any capture (12 and 19 were
+    too, until a T4 sent them).
 
     Mapping them to a plausible-looking neighbour would hide the moment a
     T6/T7 starts sending one; the warning path is the feature.

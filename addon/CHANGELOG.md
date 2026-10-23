@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- **A D4's meal reports keep their content.** The feeder wraps `content` and
+  `state` of its `dev_event_report` in one more pair of quotes, unescaped, so
+  both decoded to nothing: every meal arrived with no amount, result or error
+  code, the day's feed totals never moved, and the feeder's state was never
+  refreshed from them. Undone now, after a field has failed to parse as it is
+  (two D4s, fw 1.267, proxied 2026-10-22).
+- **Two more T4 event codes.** `12` is the end of a levelling cycle and `19`
+  opens every odor-removal cycle on a box with a Pura Air linked, both seen on
+  the wire from a T4 (fw 1.652). They read "Event 12"/"Event 19" before.
+
 ## 2.1.1 — 2026-10-22
 
 The first release of the junekiwi fork: upstream 2.1.0 plus the fixes below,

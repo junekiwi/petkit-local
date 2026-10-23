@@ -158,23 +158,34 @@ def _repair_bare_values(text: str) -> str:
     return _BARE_VALUE.sub(fix, text)
 
 
+def _loads_repairing(text: str) -> object:
+    """`json.loads`, retried once with the bare-token repair, or None."""
+    try:
+        return json.loads(text)
+    except (json.JSONDecodeError, TypeError):
+        # Only attempt the repair once the strict parse has failed, and
+        # only trust it if the result parses cleanly — a bad guess must
+        # degrade to "no content", never to made-up content.
+        try:
+            return json.loads(_repair_bare_values(text))
+        except (json.JSONDecodeError, TypeError):
+            return None
+
+
 def _as_dict(value: object) -> dict:
     """Decode a `content`/`state` field that may already be a dict or may be a
     JSON string. Kept here rather than in utils/dicts.py: this is JSON decoding
-    (including the bare-token repair above), not dict traversal."""
+    (including the bare-token repair above), not dict traversal.
+
+    A D4 (fw 1.267) wraps both fields of its `dev_event_report` in one more
+    pair of quotes, unescaped: `content="{"start_time":...}"` (proxied
+    2026-10-22). Undone only after the field has failed to parse as it is."""
     if isinstance(value, dict):
         return value
     if isinstance(value, str):
-        try:
-            parsed = json.loads(value)
-        except (json.JSONDecodeError, TypeError):
-            # Only attempt the repair once the strict parse has failed, and
-            # only trust it if the result parses cleanly — a bad guess must
-            # degrade to "no content", never to made-up content.
-            try:
-                parsed = json.loads(_repair_bare_values(value))
-            except (json.JSONDecodeError, TypeError):
-                return {}
+        parsed = _loads_repairing(value)
+        if parsed is None and len(value) > 2 and value[0] == value[-1] == '"':
+            parsed = _loads_repairing(value[1:-1])
         return parsed if isinstance(parsed, dict) else {}
     return {}
 

@@ -50,6 +50,41 @@ def test_parse_event_report_form_empty_and_garbage():
     assert ingest.parse_event_report_form("   ") == {}
 
 
+#: A D4's meal report, verbatim from PetKit's own traffic (fw 1.267, proxied
+#: 2026-10-22): both fields wrapped in one more pair of unescaped quotes, and
+#: the meal id an unquoted token inside.
+D4_MEAL_REPORT = (
+    'event_type=4&event_id=400017498_1792684834&timestamp=1792684839'
+    '&content="{"start_time":1792684834,"id":s_20261022_64800,"day":20261022,'
+    '"manual":0,"time":64838,"real_amount":10,"online_state":1,'
+    '"completed_at":1792684839,"result":0,"err_code":0}"'
+    '&state="{"err":{"DC":0,"sys":0,"rtc_c":0,"moto":0,"grat":0,"blk_f":0,'
+    '"blk_d":0,"ir":0},"batV":4675,"DCV":5157,"runtime":16394,"ubat":0,'
+    '"feeding":0,"other":"heap:113304,res:7,rl=871,wlp=10,tswd=0_0,boffw=1,'
+    'won=0,inff=0,wres=0,valid:1,snxt:0,cntd:44961,rpts=2"}"'
+)
+
+
+def test_a_d4_meal_report_keeps_its_content_and_state():
+    """Both fields used to decode to nothing, so a meal arrived with no amount,
+    no result and no error code, and the feeder's state was never refreshed."""
+    form = ingest.parse_event_report_form(D4_MEAL_REPORT)
+    row = ingest.from_event_report(_Dev(petkit_id=400017498, device_type="d4"), form)
+    assert row["event_kind"] == "feeding"
+    content = json.loads(row["content_json"])
+    assert content["id"] == "s_20261022_64800"
+    assert (content["real_amount"], content["result"], content["err_code"]) == (10, 0, 0)
+    assert json.loads(row["state_json"])["batV"] == 4675
+
+
+def test_a_quoted_field_that_is_not_an_object_still_decodes_to_nothing():
+    """The extra quotes are undone only to reach an object; a plain quoted
+    string is not content."""
+    form = ingest.parse_event_report_form('event_type=4&event_id=1_2&content="hello"')
+    row = ingest.from_event_report(_Dev(petkit_id=1, device_type="d4"), form)
+    assert row["content_json"] is None
+
+
 def test_from_event_report_builds_row_and_extracts_state():
     # event_id is the SESSION key (see the real-capture tests below) — it
     # becomes related_event directly, and event_uid is event_id+event_type

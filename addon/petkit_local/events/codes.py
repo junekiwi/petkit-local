@@ -310,6 +310,16 @@ LITTER_HTTP_CODES: dict[str, EventCode] = {
         firmware="correct_over_event_report (a0=0xb)",
         families=LITTER_NEXT_GEN,
     ),
+    "12": EventCode(
+        kind=KIND_CLEANING, label="Levelling done", grade=INFERRED,
+        role=ROLE_DONE, done_word="levelling", families=frozenset({"t4"}),
+        note="One T4 capture (fw 1.652, 2026-10-22): 24 s after a remote "
+             "start_action 4, closing the code 3 that opened with action=4. "
+             "Content {start_time, over_time, start_reason, pos, current, "
+             "result, components, litter_weight, err}, the completion shape "
+             "of code 5 without the waste fields. One observation, hence "
+             "inferred.",
+    ),
     "13": EventCode(
         kind=KIND_CLEANING, label="Mechanism step", grade=INFERRED,
         detail=True, role=ROLE_STEP, mode_from="action",
@@ -370,6 +380,18 @@ LITTER_HTTP_CODES: dict[str, EventCode] = {
         firmware="sand_correct_event_report (a0=0x12)",
         families=LITTER_NEXT_GEN,
     ),
+    "19": EventCode(
+        kind=KIND_CLEANING, label="Spray triggered", grade=INFERRED,
+        detail=True, role=ROLE_STEP, families=frozenset({"t4"}),
+        note="T4 (fw 1.652) with a Pura Air linked, 2026-10-22/23: sent "
+             "first in every odor-removal cycle, 5 of 5 -- two remote "
+             "(reason=2) and three automatic after a visit (reason=0) -- and "
+             "a few seconds before the code 3 with action=2. Content "
+             "{reason, pos, type, item_id}; type was 1 every time, and "
+             "item_id 0 except once, when it held 460621, the id of the "
+             "box's own dev_schedule_get entry. Read as the spray being "
+             "handed to the Pura Air; never seen without one.",
+    ),
     "20": EventCode(
         kind=KIND_PET, label="Appeared", anchor=True,
         firmware="pk_event_pack_pet_and_wander", families=LITTER_NEXT_GEN,
@@ -421,7 +443,8 @@ LITTER_HTTP_CODES: dict[str, EventCode] = {
 #: Codes absent from both the firmware RE and our wire. Left unmapped on
 #: purpose so `classify_event_kind` logs them once if a T6/T7 ever sends one,
 #: rather than silently bucketing them into a family they may not belong to.
-UNKNOWN_HTTP_CODES = frozenset({"12", "19", "22", "23"})
+#: 12 and 19 left this set when a T4 sent them (see their rows).
+UNKNOWN_HTTP_CODES = frozenset({"22", "23"})
 
 
 #: Feeder HTTP codes. Code 2 came from the D4H firmware RE; codes 3 and 4
