@@ -81,6 +81,32 @@ async def test_a_retried_mqtt_event_counts_and_fires_once():
         assert [e[2] for e in pub.events] == ["feed_over"]
 
 
+async def test_a_feed_echo_keeps_the_stamp_and_the_one_off_feeds():
+    """A feeder posting its schedule back must not replace ours wholesale:
+    the deferred feeds live only here, and without `v: 2` a schedule whose
+    meals all fall before 00:24 was read as a 2.0.x minute save on the next
+    `dev_feed_get` and had every time multiplied by 60."""
+    from petkit_local.http.handlers.feed import migrate_minute_schedule
+
+    with tempfile.TemporaryDirectory() as tmp:
+        reg, dev, pub, store, hub, pet_registry, bridge = _setup(tmp)
+        feeder = reg.get_or_create(petkit_id=11, device_type="d4sh", serial_number="SN11")
+        deferred = [{"id": "d_20261024_28800", "t": 28800, "a1": 1, "a2": 0}]
+        feeder.config["feed_schedule"] = {"schedule": [], "v": 2, "deferred": deferred}
+        echo = {"schedule": [{"re": "1,2,3,4,5,6,7",
+                              "it": [{"id": "n_600", "t": 600, "a1": 1, "a2": 1}]}]}
+        await bridge._handle_event(feeder, "property", {"params": {"feed": echo}})
+        stored = feeder.config["feed_schedule"]
+        assert stored["schedule"] == echo["schedule"]
+        assert stored["deferred"] == deferred
+        assert migrate_minute_schedule(stored) is False
+        assert stored["schedule"][0]["it"][0]["t"] == 600
+
+        # Not a schedule at all: what is stored stays.
+        await bridge._handle_event(feeder, "property", {"params": {"feed": {"x": 1}}})
+        assert feeder.config["feed_schedule"] is stored
+
+
 async def test_property_event_is_not_persisted():
     with tempfile.TemporaryDirectory() as tmp:
         reg, dev, pub, store, hub, pet_registry, bridge = _setup(tmp)

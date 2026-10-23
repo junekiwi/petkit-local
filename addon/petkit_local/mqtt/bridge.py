@@ -546,8 +546,19 @@ class MQTTBridge:
         the litter box's cleaning/deodorizing schedule.
         """
         feed = params.get("feed")
-        if isinstance(feed, dict) and device.is_feeder:
-            device.config["feed_schedule"] = feed
+        if isinstance(feed, dict) and isinstance(feed.get("schedule"), list) \
+                and device.is_feeder:
+            # Merged over what is stored rather than replacing it. The device
+            # knows its meals but not our one-off feeds, which `dev_feed_get`
+            # serves from `deferred`, and its `t` is the wire's seconds by
+            # definition: stored without the `v: 2` stamp, a schedule whose
+            # meals all fall before 00:24 reads as a 2.0.x minute save and
+            # `feed.migrate_minute_schedule` multiplies every time by 60.
+            stored = device.config.get("feed_schedule")
+            merged = {**feed, "v": 2}
+            if isinstance(stored, dict) and "deferred" in stored:
+                merged["deferred"] = stored["deferred"]
+            device.config["feed_schedule"] = merged
             log.info("Stored feed schedule for device %d from property post",
                      device.petkit_id)
         sched = params.get("schedule")

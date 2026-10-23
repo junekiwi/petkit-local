@@ -122,6 +122,15 @@
   store already holds now updates its row and nothing else, on either
   transport.
 
+- **A feeder posting its schedule back over MQTT no longer wipes one-off
+  feeds or shifts meal times.** The schedule was stored exactly as the device
+  sent it, which dropped the pending one-off feeds (only this add-on holds
+  them) and the marker that says meal times are in seconds; without that
+  marker, a schedule whose meals all fall before 00:24 was taken for an old
+  minutes-based save and every time was multiplied by 60. The posted meals
+  now replace ours with both kept, and anything that is not a schedule is
+  ignored.
+
 ## 2.1.4 — 2026-10-23
 
 - **A litter box without a camera names the cat by weight.** A T4 cannot
