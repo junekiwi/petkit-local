@@ -186,8 +186,12 @@ async def api_save_schedule(request: web.Request) -> web.Response:
 
     Storing happens either way, because `dev_multi_config` and
     `dev_schedule_get` are what the device actually reads on its own clock; the
-    push only saves it the wait. A feeding schedule is stored and NOT pushed:
-    no capture shows the cloud writing one, and `dev_feed_get` serves it.
+    push only saves it the wait. A feeding schedule is pushed twice over: a
+    `feed_get: 1` on the heartbeat queue (`_push_feed_get`), which has the
+    device fetch `dev_feed_get` again, and a `property.set{feed}` carrying the
+    schedule as a JSON string with `latest` and `nextTick` recomputed — the
+    shape PetKit's own cloud pushes a D4H (upstream issue #36), without the
+    `itemJsonString` that `dev_feed_get` carries.
     """
     reg = request.app["registry"]
     hub = request.app["hub"]
@@ -310,6 +314,7 @@ async def api_deferred_feed(request: web.Request) -> web.Response:
 
 
 def _push_feed_get(d, hub, bridge, feed):
-    """Queue feed_get:1 heartbeat + MQTT property.set{feed}."""
+    """Queue a `feed_get: 1` heartbeat command; the caller sends the
+    `property.set{feed}` that goes with it."""
     d.command_queue.append({"msgType": 1, "payload": {"feed_get": "1"},
                             "timestamp": int(time.time())})
