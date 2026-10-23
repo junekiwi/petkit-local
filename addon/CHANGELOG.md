@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.1.2 — 2026-10-23
 
 - **Import a device's configuration.** Setup → Import configuration (and
   `POST /api/import`) takes PetKit's own replies to a device — signup, device
