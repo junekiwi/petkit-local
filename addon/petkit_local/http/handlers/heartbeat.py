@@ -215,7 +215,9 @@ async def handle_heartbeat(request: web.Request) -> web.Response:
     """Answer the device's poll, delivering any commands queued for it.
 
     Also the liveness signal for models with no MQTT session: a heartbeat stamps
-    `last_heartbeat` and marks the device online.
+    `last_heartbeat`. Marking the device online is left to `logging_middleware`,
+    which tells HA when that is a change — set here first, the middleware saw a
+    device already online and a returning one stayed unavailable in HA.
 
     Returns:
         ``{"result": [{"time": ms, "timestamp": s, "content": str}, ...]}`` with
@@ -236,7 +238,6 @@ async def handle_heartbeat(request: web.Request) -> web.Response:
 
     if device:
         device.last_heartbeat = time.time()
-        device.online = True
         note_iot_status(device, request)
 
         cmds = device.pop_commands()

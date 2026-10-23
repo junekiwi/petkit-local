@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- **A device that comes back after a restart is available in HA again.**
+  Every device starts offline, and a model on HTTP whose first contact was a
+  heartbeat (a T4 or D4, every 11 s) stayed unavailable in Home Assistant
+  until its next state report, up to an hour later. The heartbeat marked the
+  device online itself, so the request middleware saw no change and never
+  published availability. Only a device that happened to poll before the HA
+  broker connection was up came back at once.
+
 ## 2.1.5 — 2026-10-23
 
 - **Home Assistant event entities fire** (shinn-y, upstream PR #26). HA reads

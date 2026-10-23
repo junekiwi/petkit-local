@@ -427,6 +427,31 @@ async def test_heartbeat_ignores_an_iot_status_that_lags_the_connect():
         await client.close()
 
 
+async def test_a_heartbeat_that_brings_a_device_back_tells_ha():
+    """After a restart every device starts offline. A T4 whose first contact
+    was a heartbeat stayed unavailable in HA while polling every 11s, because
+    the handler marked it online itself and the middleware, seeing no change,
+    never fired `on_device_seen`."""
+    reg = DeviceRegistry()
+    dev = reg.get_or_create(petkit_id=100, device_type="t4", serial_number="SN100")
+    assert dev.online is False
+    seen = []
+
+    async def on_device_seen(device):
+        seen.append((device.petkit_id, device.online))
+
+    app = create_app(reg, CONFIG)
+    app["on_device_seen"] = on_device_seen
+    client = TestClient(TestServer(app))
+    await client.start_server()
+    try:
+        await client.post("/6/poll/t4/heartbeat", headers=HDR)
+        await client.post("/6/poll/t4/heartbeat", headers=HDR)
+        assert seen == [(100, True)]
+    finally:
+        await client.close()
+
+
 async def test_heartbeat_never_sets_the_mqtt_flag():
     """iotStatus=1 says the device is on *a* broker, not on ours — in proxy
     mode that may be Aliyun's. Only an authenticated CONNECT proves the
