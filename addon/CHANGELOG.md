@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased
+
+- **Groundwork for local MQTT on the ESP32 models (T3/T4/D3/D4/D4S): a firmware
+  CA-swap patcher engine.** These models trust exactly one root for MQTT TLS,
+  embedded as PEM text in the firmware, and build their broker name from the
+  product key — so unflashed they can only be served over HTTP (the
+  `esp32_http_only` path), where a command waits out the ~10 s heartbeat that
+  MQTT would deliver at once. `patchers/firmware.py` swaps that one embedded
+  root for a CA we hold the key to, leaving the image otherwise byte-identical
+  and TLS verification intact: the trust anchor moves, nothing is disabled. It
+  sizes a 2048-bit CA to the firmware's exact cert slot (CRLF-framed, DER length
+  tuned to the byte), recomputes the ESP-IDF segment checksum and appended
+  SHA-256 that the swap invalidates, and re-parses the result before it could be
+  offered to a device. Proven byte-for-byte: fed a real D4 1.267 image and a
+  known-working third-party patched image's CA, it reproduces that image's exact
+  MD5. `issue_server_cert` mints the matching broker leaf (CN =
+  `<productKey>.iot-as-mqtt.<region>.aliyuncs.com`). On-device delivery over OTA
+  — apply, and rollback to the retained stock image — plus the broker/DNS wiring
+  that points the device at our broker, are the next step; nothing here reaches
+  a device yet.
+
 ## 2.1.7 — 2026-10-24
 
 - **A D4 no longer shows six entities it can never fill.** Food in Bowl, Food
