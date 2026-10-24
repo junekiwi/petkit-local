@@ -8,6 +8,7 @@ real device has not yet flashed anything this code offered.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 
 import pytest
@@ -106,6 +107,22 @@ def test_a_module_that_is_not_what_petkit_described_is_refused(tmp_path, stock_i
     with pytest.raises(FirmwareImageError, match="but PetKit described"):
         esp32_ota.save_release(str(tmp_path), "d4", listing, {"userbin": stock_image})
     assert not (tmp_path / "firmware").exists()
+
+
+def test_a_manifest_that_lost_its_patched_block_reads_as_absent(tmp_path, stock_image):
+    # `offer()` reads the patched size/digest off the userbin detail, so a
+    # hand-edited or partially written manifest must load as "no release" rather
+    # than reach offer() and 500 a device mid-dev_ota_check (which it retries).
+    modules = {"userbin": stock_image}
+    esp32_ota.save_release(str(tmp_path), "d4", _listing(modules), modules)
+    assert esp32_ota.load_release(str(tmp_path), "d4", "1.267") is not None
+
+    manifest = tmp_path / "firmware" / "d4" / "1.267" / "manifest.json"
+    m = json.loads(manifest.read_text())
+    for d in m["details"]:
+        d.pop("patched", None)
+    manifest.write_text(json.dumps(m))
+    assert esp32_ota.load_release(str(tmp_path), "d4", "1.267") is None
 
 
 @pytest.mark.parametrize("mutate, match", [
