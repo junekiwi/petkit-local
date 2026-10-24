@@ -13,6 +13,9 @@
   `batV` its state reports carry. Two D4s read about 3.86 V and 4.67 V. Only
   a meal report used to put the value into the feeder's state, so the hourly
   state report never refreshed it.
+- **Last Feed moves only when food is dispensed.** On the camera feeders a
+  cat finishing its meal (`eat_over`) counted as a finished feed, so Last
+  Feed jumped to whenever a cat walked away from the bowl.
 
 ## 2.1.6 — 2026-10-23
 

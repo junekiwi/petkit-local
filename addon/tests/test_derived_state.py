@@ -80,6 +80,14 @@ def test_a_completed_feed_dates_last_feed_on_either_transport():
         assert d.state.get("lastFeed"), f"{event_type} did not set lastFeed"
 
 
+def test_a_cat_finishing_its_meal_is_not_a_feed():
+    """`eat_over` shares the feeding kind and the done role with `feed_over`,
+    and used to move Last Feed to whenever a cat walked away from the bowl."""
+    d = _device("d4h")
+    apply_derived_state(d, "eat_over", {})
+    assert "lastFeed" not in d.state
+
+
 def test_an_unknown_event_changes_nothing():
     d = _device()
     apply_derived_state(d, "not-a-real-event", {})

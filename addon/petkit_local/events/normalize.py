@@ -492,7 +492,7 @@ def apply_derived_state(device: Device, event_type: str, content: dict) -> None:
             device.state["petWeight"] = weight
         _accumulate_visit_count(device, content)
 
-    elif code.kind == codes.KIND_FEEDING and code.role == codes.ROLE_DONE:
+    elif codes.is_feed_done(code):
         device.state["lastFeed"] = _now_iso()
         _accumulate_feed_totals(device, content)
 

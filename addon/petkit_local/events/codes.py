@@ -1547,3 +1547,14 @@ def visit_summary_event_types(device_type: str | None) -> list[str]:
     """
     return sorted(key for key, code in codes_for(device_type).items()
                   if code.kind == KIND_TOILET and code.role == ROLE_VISIT_SUMMARY)
+
+
+def is_feed_done(code: EventCode) -> bool:
+    """Whether `code` is a finished feed: food left the hopper.
+
+    `eat_over` shares the feeding kind and the done role -- it closes a cat's
+    meal on the camera feeders -- so the kind and role alone would date Last
+    Feed from somebody eating.
+    """
+    return (code.kind == KIND_FEEDING and code.role == ROLE_DONE
+            and code.done_word == "feeding")
