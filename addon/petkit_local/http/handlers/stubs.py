@@ -6,13 +6,13 @@ entities.
 
 The rest exist because a PetKit device blocks on them. Firmware treats a 4xx/5xx
 as a server fault and retries forever, so every endpoint it calls needs *some*
-well-formed answer even when the feature behind it (OTA, Agora live view, sound
+well-formed answer even when the feature behind it (Agora live view, sound
 packs) does not exist in a local deployment. The value each one returns is
 therefore load-bearing: it is the answer that makes the device stop asking and
 move on, not a placeholder.
 
-Response *shape* matters as much as content — `ota_check`, `sound_get` and
-`attire_over` must return JSON arrays, `multi_config`'s values must be
+Response *shape* matters as much as content — `sound_get` must return a JSON
+array and `attire_over` an integer, `multi_config`'s values must be
 JSON-encoded strings, and so on. Those shapes were checked against the real
 PetKit cloud (see the CHANGELOG's "Fidelity" entry); do not simplify them to
 `{}` because a given field looks unused.
@@ -48,19 +48,6 @@ async def handle_sync_time(request: web.Request) -> web.Response:
         or run its own schedules.
     """
     return web.json_response({"result": int(time.time())})
-
-
-async def handle_ota_check(request: web.Request) -> web.Response:
-    """`dev_ota_check` / `dev_ota_heartbeat` — report that no firmware update exists.
-
-    Returns:
-        ``{"result": {}}`` — an OBJECT. This was an array, documented as "the
-        real cloud's shape"; proxying the endpoint to PetKit on 2026-07-27
-        showed the cloud answers `{"result":{}}` every time. Always empty by
-        design either way: petkit-local hosts no firmware images, and a bad
-        answer here is the one way this server could brick a device.
-    """
-    return web.json_response({"result": {}})
 
 
 async def handle_attire_over(request: web.Request) -> web.Response:

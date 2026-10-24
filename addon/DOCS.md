@@ -150,6 +150,31 @@ work on either. MQTT TLS Bypass and Local Storage rewrite machine code, and
 Persistent SSH installs a prebuilt binary, so those three are MIPS-only for now
 and the tab says so per patch rather than hiding itself.
 
+## Patching a T3, T4 or D4 firmware
+
+These models trust exactly one certificate for MQTT, compiled into their
+firmware, so no broker but PetKit's can serve them. The **Patchers** tab has a
+card for each one that rebuilds the firmware with that certificate swapped
+for one this app holds the key to — PetKit's own image, otherwise byte for
+byte — and flashes it over the air, the way the device takes any update.
+
+1. **Fetch from PetKit.** Asks PetKit, signed as the device, for its model's
+   current firmware, and keeps both PetKit's image and the patched one. It
+   needs the signing secret PetKit knows for this device: one it learned
+   through proxy mode, or one imported with `dev_signup`. A device whose
+   secret was issued here is refused (`704`). If your DNS points PetKit's
+   names at this app, set *DNS for upstream lookups* in Setup first.
+2. **Flash patched.** The device is told on its next heartbeat, or takes it
+   the next time it boots. Keep it powered until the card's log says done.
+3. **Roll back to stock** flashes PetKit's image back the same way.
+
+A flash writes the device's spare firmware partition and switches to it. The
+partition it was running from keeps its old firmware, and the device falls
+back to that if the new one ever fails to start, so one flash is enough.
+
+This has not yet been flashed onto a device by this app. It is done at your
+own risk, like every patcher.
+
 ## Importing a device's configuration
 
 A device moved here keeps its settings and schedules only if this app already

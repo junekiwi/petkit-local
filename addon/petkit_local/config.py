@@ -304,7 +304,7 @@ class Config:
     proxy_block_run_cmd: bool = True
     #: Answer the OTA endpoints locally and drop firmware images found
     #: elsewhere. A bad answer there is the one way this server could brick a
-    #: device (`handlers/stubs.py::handle_ota_check`).
+    #: device (`handlers/ota.py::handle_ota_check`).
     proxy_block_ota: bool = True
     #: Withhold the STS token the device needs to upload its own debug log to
     #: PetKit. That log is a full request transcript including this add-on's LAN

@@ -17,6 +17,7 @@ from petkit_local.ha.learn import learn_settings
 from petkit_local.http.dns import loops_back
 from petkit_local.http.handlers._common import request_device
 from petkit_local.http.handlers.heartbeat import carries_commands
+from petkit_local.http.handlers.ota import offers_firmware
 from petkit_local.http.handlers.iot_device_info import self_mqtt_host
 from petkit_local.http.middleware import API_PREFIX, PROXY_OUTCOME, Handler
 from petkit_local.http.middleware.logging import _short, _text_or_none
@@ -155,7 +156,7 @@ async def proxy_middleware(request: web.Request, handler: Handler) -> web.Stream
     On, the local handler still runs FIRST and in full. Its response is usually
     discarded, but its side effects are not: that is what keeps the event store,
     the HA entities and the media pipeline populated while a device is being
-    observed against PetKit. Five things then decide what the device receives:
+    observed against PetKit. Six things then decide what the device receives:
 
     1. **A heartbeat carrying a queued command is answered immediately, without
        forwarding at all.** Building that answer already drained the queue
@@ -164,13 +165,16 @@ async def proxy_middleware(request: web.Request, handler: Handler) -> web.Stream
        be lost — to a cancelled request, a slow upstream, or an exception. There
        is no way to put it back. The next heartbeat is ~15s away and almost
        always idle, so the observation this costs is nil.
-    2. An unidentified request is never forwarded. Redaction substitutes OUR
+    2. A `dev_ota_check` answered with firmware armed in the panel is not
+       forwarded either: redaction would replace any OTA reply with "no
+       update", withdrawing the job (`handlers/ota.py::offers_firmware`).
+    3. An unidentified request is never forwarded. Redaction substitutes OUR
        credentials and addresses into the reply, and without a registered device
        there is nothing to substitute — forwarding raw would be the one way this
        middleware could hand a device someone else's cloud.
-    3. `forward` returning None (unreachable, too slow, breaker open) falls back
+    4. `forward` returning None (unreachable, too slow, breaker open) falls back
        to the local response. A device must never pay for PetKit being down.
-    4. An upstream reply the device could not act on falls back to the local
+    5. An upstream reply the device could not act on falls back to the local
        response too — a non-2xx, OR a 200 carrying PetKit's refusal envelope
        (`{"error": {"code": 704}}`, which is what a taken-over device gets on
        every session-bearing endpoint, since the session it presents is one WE
@@ -179,7 +183,7 @@ async def proxy_middleware(request: web.Request, handler: Handler) -> web.Stream
        device into a boot loop every ~2.4s. The status, the error and the body
        are all still recorded — observing the refusal is the point, showing it to
        the device is not.
-    5. Anything else is answered with the redacted upstream reply. A heartbeat
+    6. Anything else is answered with the redacted upstream reply. A heartbeat
        that got this far was idle, so merging is a no-op on our side and simply
        lets the cloud's commands through.
 
@@ -207,6 +211,12 @@ async def proxy_middleware(request: web.Request, handler: Handler) -> web.Stream
             log.debug("Not forwarding %s: it is delivering a queued command",
                       request.path)
             return local
+
+    if offers_firmware(local):
+        # Redaction answers every OTA endpoint "no update" whatever the cloud
+        # said, so forwarding would withdraw a firmware job armed in the panel.
+        log.debug("Not forwarding %s: it offers firmware armed here", request.path)
+        return local
 
     if _reports_a_local_log_upload(request, config):
         # `dev_upload_log` reports the object URL as a QUERY parameter, and once

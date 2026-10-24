@@ -571,9 +571,11 @@ class UpstreamMQTT:
     async def _block_ota(self, device: Device, topic: str, raw: bytes) -> None:
         """Refuse a firmware push and keep a record of it.
 
-        Nothing is republished locally. This add-on hosts no firmware and a bad
-        answer here is the one way it could brick a device — the same reasoning
-        `http/handlers/stubs.py::handle_ota_check` records for the HTTP side.
+        Nothing is republished locally. The only firmware a device is ever
+        offered here is a job armed from the panel (`patchers/esp32_ota.py`),
+        and a bad answer is the one way this add-on could brick a device — the
+        same reasoning `http/handlers/ota.py::handle_ota_check` applies on the
+        HTTP side.
         """
         log.warning("BLOCKED upstream OTA push for device %d on %s", device.petkit_id, topic)
         if self._hub is not None:

@@ -69,7 +69,8 @@ log = logging.getLogger(__name__)
 #: the queue drains and `wait_for_heartbeat` reports the command delivered,
 #: while the device discards it. Only these three exist — do not extend.
 #:
-#: Nothing sends msgType 0; it is here because the enum has three arms.
+#: The only msgType 0 we send is `ota` (`patchers/esp32_ota.py::ota_trigger`),
+#: which makes an ESP32 with a firmware job armed ask `dev_ota_check` at once.
 MSG_TYPE_TOPIC = 0
 MSG_TYPE_PROPERTY_SET = 1
 MSG_TYPE_SERVICE_INVOKE = 2
