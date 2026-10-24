@@ -315,7 +315,7 @@ async def start_background(services: Services, app_instance: web.Application) ->
             tls=config.mqtt_tls, tls_port=config.mqtt_tls_port,
             certfile=cert_path,
             keyfile=config.mqtt_key or f"{config.data_dir}/certs/broker.key",
-            strict_auth=config.mqtt_strict_auth, hub=hub,
+            strict_auth=config.mqtt_strict_auth, hub=hub, data_dir=config.data_dir,
         )
         app_instance["mqtt_broker"] = broker
         # The panel is a separate application, and its device view reports

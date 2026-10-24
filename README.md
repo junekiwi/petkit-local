@@ -6,9 +6,11 @@
 > `ghcr.io/junekiwi/petkit-local`, and the add-on repository URL below points here. What it
 > changes on top of upstream 2.1.0:
 >
-> - **The T3, T4 and D4 stay on HTTP.** Their firmware builds its MQTT broker name from the
->   product key and trusts only PetKit's own root, so no local broker can serve them unflashed.
->   They now get a fixed key and need one DNS record (see [DOCS](addon/DOCS.md#networking)).
+> - **The T3, T4 and D4 run on HTTP out of the box, and on MQTT once patched.** Their firmware
+>   builds its MQTT broker name from the product key and trusts only PetKit's own root, so no local
+>   broker can serve them unflashed; unpatched they get a fixed key and need one DNS record. The
+>   Patchers tab can swap that root for one this add-on holds and flash it over OTA — then the
+>   device is handed its real broker name and connects over MQTT (see [DOCS](addon/DOCS.md#networking)).
 > - **A D4 is answered the way PetKit answers it**: flat MQTT credentials, and its settings
 >   block (with `factor` and `lightRange`) at signup.
 > - **Upstream pull requests merged here**: flat credentials for T3/T4 (#42), Pura Air readings
@@ -107,8 +109,9 @@ other model below is inference until the same is true of it.
 | Fresh Element Gemini | D4S | — | — |
 
 Confirmed is not the same as complete: there can still be bugs, and features that are missing.
-The Pura Max (T4) and Fresh Element Solo (D4) run on this fork over HTTP heartbeats, never MQTT
-(see the note at the top).
+The Pura Max (T4) and Fresh Element Solo (D4) run on this fork over HTTP heartbeats unpatched, and
+over MQTT once their firmware is patched from the Patchers tab (see the note at the top). The OTA
+flash and the MQTT path have not yet been exercised on real hardware.
 The D4S Gemini has completed a local one-portion feed over HTTP heartbeats.
 Leave the default device-facing MQTT TLS listener enabled; the unit tested here
 failed to resume heartbeats after one restart with it disabled.

@@ -17,6 +17,7 @@ from petkit_local.devices.base import Device
 from petkit_local.http.handlers._common import (
     device_id, device_serial, no_device_response, request_device,
 )
+from petkit_local.patchers import esp32_ota
 
 log = logging.getLogger(__name__)
 
@@ -97,13 +98,17 @@ async def handle_iot_device_info(request: web.Request) -> web.Response:
         `payloads.to_iot_device_info_flat()` for `FLAT_CREDENTIAL_TYPES`,
         `payloads.to_iot_device_info()` (nested in the Aliyun `ali` envelope)
         for everything else. A model kept on HTTP (`payloads.http_only_broker`)
-        gets `payloads.HTTP_ONLY_PRODUCT_KEY` and the broker name built from it.
+        gets `payloads.HTTP_ONLY_PRODUCT_KEY` and the broker name built from it
+        — unless its firmware was patched from the panel and no job is armed
+        (`patchers/esp32_ota.http_only`), when it gets its own key, whose name
+        DNS points at this broker.
     """
     device = _resolve_or_create_device(request)
     if not device:
         return no_device_response()
     config = request.app["config"]
-    http_only = payloads.http_only_broker(device, config.get("esp32_http_only", True))
+    http_only = payloads.http_only_broker(
+        device, esp32_ota.http_only(device, config.get("esp32_http_only", True)))
     if http_only:
         product_key, mqtt_host = http_only
         log.info("IoT device info (flat, HTTP only): id=%d -> pk=%s mqttHost=%s",

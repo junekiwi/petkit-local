@@ -2,8 +2,9 @@
 
 The device connects over TLS (Aliyun securemode=2). We keep a plain-TCP
 listener for the internal bridge and, when enabled, add a TLS listener on the
-device-facing port. The device patches mbedtls to skip cert verification, so a
-self-signed cert is sufficient.
+device-facing port. A Linux device patched to trust it is served a self-signed
+cert; a patched ESP32 asks by name for the leaf its firmware's CA signed
+(`Esp32Certificate`).
 
 This broker exists so the device has somewhere to connect that behaves like
 Aliyun IoT; it is NOT Home Assistant's broker (that one is Mosquitto, spoken to
@@ -26,6 +27,9 @@ from petkit_local.config import _supervisor_host_ip
 from petkit_local.devices.registry import DeviceRegistry
 from petkit_local.mqtt import protocol_compat
 from petkit_local.mqtt.auth import AliyunAuthPlugin, parse_client_id
+from petkit_local.patchers.esp32_ota import (
+    BROKER_NAME_RE, broker_leaf_paths, ensure_broker_leaf,
+)
 from petkit_local.utils.tls import subject_alt_names
 
 if TYPE_CHECKING:
@@ -167,6 +171,76 @@ def ensure_self_signed(cert_path: str, key_path: str,
         return False
 
 
+def _device_friendly(ctx: ssl.SSLContext) -> ssl.SSLContext:
+    """Accept the only suites a device's mbedTLS offers.
+
+    It offers RSA key-exchange and PSK suites — no ECDHE, no DHE. Python 3.12's
+    default context excludes plain RSA (no forward secrecy), so the handshake
+    would fail with no shared cipher.
+    """
+    ctx.set_ciphers("DEFAULT:@SECLEVEL=0")
+    ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+    return ctx
+
+
+class Esp32Certificate:
+    """The certificate a patched ESP32 is shown, chosen by the name it dials.
+
+    Every other device is served `broker.crt`, which the Linux models were
+    patched to trust (`patchers/cacert.py`) and must keep being served. A
+    patched ESP32 trusts only the CA in its firmware (`patchers/firmware.py`)
+    and checks the certificate against `<productKey>.iot-as-mqtt.<region>.
+    aliyuncs.com`, the name it built and sent as SNI — so that name, and only
+    that name, gets the leaf the ESP32 CA signed.
+
+    The leaf is read from disk when it changes rather than once at start-up: the
+    CA is minted by the first firmware fetch, usually long after the broker
+    started. A device that sends no SNI, or a name before any CA exists, gets
+    `broker.crt`, fails verification and stays on the HTTP heartbeat.
+    """
+
+    def __init__(self, data_dir: str) -> None:
+        self._data_dir = data_dir
+        self._ctx: ssl.SSLContext | None = None
+        self._stamp: tuple[int, int] | None = None
+
+    def context(self) -> ssl.SSLContext | None:
+        """The ESP32 server context, or None while there is no leaf."""
+        cert_path, key_path = broker_leaf_paths(self._data_dir)
+        try:
+            stamp = (os.stat(cert_path).st_mtime_ns, os.stat(key_path).st_mtime_ns)
+        except OSError:
+            return None
+        if stamp != self._stamp:
+            ctx = _device_friendly(ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER))
+            ctx.load_cert_chain(cert_path, key_path)
+            self._ctx, self._stamp = ctx, stamp
+        return self._ctx
+
+    def sni_callback(self, ssl_obj, server_name: str | None, _ctx) -> None:
+        """`SSLContext.sni_callback`: switch an ESP32 broker name to its leaf.
+
+        Never raises: an exception here aborts the handshake for whoever was
+        connecting, and the fallback — the default certificate — is the
+        behaviour every device had before this existed.
+        """
+        if not server_name or not BROKER_NAME_RE.match(server_name):
+            return
+        try:
+            ctx = self.context()
+            if ctx is not None:
+                ssl_obj.context = ctx
+        except Exception:  # noqa: BLE001 - see the docstring
+            log.exception("Could not serve the ESP32 broker certificate for %s", server_name)
+
+
+def configure_device_tls(ctx: ssl.SSLContext, data_dir: str) -> ssl.SSLContext:
+    """Make a listener context serve every device: ciphers, and the ESP32 leaf."""
+    _device_friendly(ctx)
+    ctx.sni_callback = Esp32Certificate(data_dir).sni_callback
+    return ctx
+
+
 async def start_broker(
     port: int = 1883,
     registry: DeviceRegistry | None = None,
@@ -177,6 +251,7 @@ async def start_broker(
     keyfile: str = "",
     strict_auth: bool = False,
     hub: EventHub | None = None,
+    data_dir: str = "/data",
 ) -> Broker:
     """Start the embedded broker and hand the auth plugin its dependencies.
 
@@ -192,6 +267,8 @@ async def start_broker(
             the TLS listener — a plain-HTTP device keeps working.
         strict_auth: Reject devices that fail signature validation. Off by
             default (see AliyunAuthPlugin).
+        data_dir: Where the ESP32 firmware CA and its broker leaf live
+            (`Esp32Certificate`).
 
     Returns:
         The started Broker. The caller owns shutting it down.
@@ -204,6 +281,13 @@ async def start_broker(
     if tls:
         cert = certfile or "/data/certs/broker.crt"
         key = keyfile or "/data/certs/broker.key"
+        # Re-issued here if a CA exists but its leaf is missing or stale, so
+        # the SNI callback only ever has to read files. Never fatal: without
+        # it a patched ESP32 falls back to HTTP, and nothing else is affected.
+        try:
+            ensure_broker_leaf(data_dir)
+        except Exception:  # noqa: BLE001
+            log.exception("Could not issue the ESP32 broker certificate")
         if ensure_self_signed(cert, key):
             listeners["tls"] = ListenerConfig(
                 type="tcp", bind=f"0.0.0.0:{tls_port}", max_connections=50,
@@ -226,18 +310,14 @@ async def start_broker(
 
     broker = Broker(config)
 
-    # The device's mbedtls offers only RSA key-exchange and PSK suites — no
-    # ECDHE, no DHE. Python 3.12's ssl.create_default_context() excludes plain
-    # RSA (no forward secrecy), so the TLS handshake fails with no shared
-    # cipher. We override _create_ssl_context to accept what the device sends.
+    # amqtt builds the listener's context itself; this is the one place to
+    # reach it. `configure_device_tls` admits the ciphers a device's mbedTLS
+    # offers and shows a patched ESP32 the leaf its firmware trusts.
     _orig = Broker._create_ssl_context
 
     @staticmethod
     def _device_friendly_ssl_context(listener):
-        ctx = _orig(listener)
-        ctx.set_ciphers("DEFAULT:@SECLEVEL=0")
-        ctx.minimum_version = ssl.TLSVersion.TLSv1_2
-        return ctx
+        return configure_device_tls(_orig(listener), data_dir)
 
     broker._create_ssl_context = _device_friendly_ssl_context
 

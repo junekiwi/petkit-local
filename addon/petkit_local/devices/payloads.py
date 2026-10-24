@@ -138,6 +138,8 @@ def http_only_broker(device: Device, enabled: bool) -> tuple[str, str] | None:
     One decision for the two places a device is handed MQTT credentials — our
     own `dev_iot_device_info` and proxy mode's rewrite of PetKit's — so that
     proxy mode cannot hand back the device's own key and send it to Aliyun.
+    Both pass `enabled` through `patchers/esp32_ota.http_only`, which turns it
+    off for a device whose firmware was patched to trust this broker.
     """
     if not enabled or device.device_type.lower() not in DEVICE_TYPES_DERIVED_BROKER:
         return None

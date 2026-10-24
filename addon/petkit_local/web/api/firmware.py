@@ -12,15 +12,18 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import socket
 from typing import Any
 
 import aiohttp
 from aiohttp import web
 
+from petkit_local.devices.base import aliyun_broker_name
 from petkit_local.http.cloud_fetch import (
     FIRMWARE_TIMEOUT, CloudRefused, download_firmware_module, fetch_firmware_listing,
 )
 from petkit_local.http.dns import UpstreamResolver
+from petkit_local.http.handlers.iot_device_info import self_mqtt_host
 from petkit_local.http.proxy import resolve_upstream
 from petkit_local.patchers import esp32_ota
 from petkit_local.patchers.firmware import FirmwareImageError
@@ -61,7 +64,36 @@ async def api_firmware_status(request: web.Request) -> web.Response:
         "last_result": state.get("last_result"),
         "mqtt_connected": d.mqtt_connected,
         "ca_sha256": esp32_ota.ca_fingerprint(data_dir),
+        "broker": await _broker_status(request, d),
     })
+
+
+async def _broker_status(request: web.Request, d: Any) -> dict[str, Any]:
+    """The DNS record a patched device needs, and whether it is in place.
+
+    The device dials `<productKey>.iot-as-mqtt.eu-central-1.aliyuncs.com` on
+    443 whatever address it is handed, so that name has to point here.
+    Resolved with this add-on's own resolver, which on most networks is the
+    one the device asks too. Aliyun answers every name under that domain, so
+    "resolves" alone proves nothing: it has to resolve to `host`.
+    """
+    name = aliyun_broker_name(d.mqtt_product_key)
+    return {
+        "name": name,
+        "host": self_mqtt_host(request.app["cfg"]),
+        "resolves_to": await resolve(name),
+        "in_use": esp32_ota.uses_local_broker(d),
+    }
+
+
+async def resolve(name: str) -> list[str]:
+    """Every IPv4 address `name` resolves to, or [] — within two seconds."""
+    try:
+        infos = await asyncio.wait_for(asyncio.get_running_loop().getaddrinfo(
+            name, 443, family=socket.AF_INET, type=socket.SOCK_STREAM), 2)
+    except (OSError, asyncio.TimeoutError):
+        return []
+    return sorted({info[4][0] for info in infos})
 
 
 async def api_firmware_action(request: web.Request) -> web.Response:
