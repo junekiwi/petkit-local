@@ -372,6 +372,14 @@ def load_release(data_dir: str, device_type: str, version: str) -> Release | Non
         return None
     if not os.path.isfile(module_path(data_dir, device_type, version, PATCHED, CA_MODULE)):
         return None
+    # `offer()` reads the patched size and digest straight off the userbin detail,
+    # so a manifest whose userbin lost its `patched` block — hand-edited, or a
+    # partial write — must read as "no release" here rather than reach `offer()`
+    # and 500 a device mid-`dev_ota_check`, which it would then retry forever.
+    userbin = next((d for d in valid["details"] if d["module"] == CA_MODULE), None)
+    patched = (userbin or {}).get(PATCHED)
+    if not isinstance(patched, dict) or "size" not in patched or "digest" not in patched:
+        return None
     return Release(device_type.lower(), valid["version"], valid["firmwareId"],
                    tuple(valid["details"]))
 
