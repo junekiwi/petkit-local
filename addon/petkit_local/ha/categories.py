@@ -310,6 +310,16 @@ CATEGORY_SPECS: dict[str, CategorySpec] = {
                 # only `ready[5]` and `ultra_sta` (upstream issue #36).
                 "device_status",
             })),
+            # A D4 (fw 1.267) has no bowl scale and no eating detection, and
+            # sends no work state and no `batteryPower`: none of these six
+            # fields is in any of 77 state reports or the meal reports of two
+            # D4s (captured 2026-10-23/24). Its report is `wifi{}`, `err{}`,
+            # `ir`, `grat`, `batV`, `DCV`, `runtime`, `ubat`, `door`, `ota`,
+            # `food`, `feeding` and `other`.
+            ("d4", frozenset({
+                "device_status", "food_in_bowl", "food_bowl_pct",
+                "amount_eaten", "eating", "battery_installed",
+            })),
         ),
         # Published to a D4H by earlier versions and never filled: Device
         # Status above, and the D4SH's three IR readings, which a D4H does not
@@ -320,6 +330,16 @@ CATEGORY_SPECS: dict[str, CategorySpec] = {
                 EntityDef(component="sensor", key="ir_b_1", name="ir_b_1"),
                 EntityDef(component="sensor", key="ir_b_2", name="ir_b_2"),
                 EntityDef(component="sensor", key="ir_c", name="ir_c"),
+            )),
+            # The six the D4 row of `model_excludes` drops.
+            ("d4", (
+                EntityDef(component="sensor", key="device_status", name="Device Status"),
+                EntityDef(component="sensor", key="food_in_bowl", name="Food in Bowl"),
+                EntityDef(component="sensor", key="food_bowl_pct", name="Food Bowl Level"),
+                EntityDef(component="sensor", key="amount_eaten", name="Amount Eaten"),
+                EntityDef(component="binary_sensor", key="eating", name="Eating"),
+                EntityDef(component="binary_sensor", key="battery_installed",
+                          name="Battery Installed"),
             )),
         ),
     ),

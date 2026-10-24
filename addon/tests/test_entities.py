@@ -72,7 +72,8 @@ EXPECTED_ENTITY_COUNTS = {
     "t3": 47, "t4": 47, "t5": 83, "t6": 90, "t7": 83,
     # d4s +4 on 2026-10-08: a live D4S feeds with `amount1`/`amount2`, so it
     # gets the dual-hopper feed buttons and portion numbers (upstream PR #43).
-    "feeder": 25, "feedermini": 25, "d3": 25, "d4": 25, "d4s": 29,
+    # d4 -6 on 2026-10-24: six entities no D4 report fills; retired from HA.
+    "feeder": 25, "feedermini": 25, "d3": 25, "d4": 19, "d4s": 29,
     # 2026-08-12: replaced `enable_feed_video` button with individual switches
     # (feed_picture, eat_video, voice_prompt, voice_disturb_mode, disturb_mode)
     # and added selected_sound number + play_sound button. Net +6.
@@ -276,3 +277,19 @@ def test_a_d4h_publishes_none_of_the_entities_it_never_fills():
     assert {e.key for e in get_retired_entities_for_device(d4h)} == gone
     d4sh = Device(device_type="d4sh", petkit_id=2, serial_number="SN")
     assert {"ir_b_1", "ir_b_2", "ir_c"} <= {e.key for e in get_entities_for_device(d4sh)}
+
+
+def test_a_d4_publishes_none_of_the_entities_it_never_fills():
+    """Two D4s (fw 1.267) sent 77 state reports and their meal reports without
+    one of these fields: the model has no bowl scale, no eating detection, no
+    work state and no `batteryPower`. They are left out and retired; a D3 on
+    the same shared list keeps them."""
+    from petkit_local.ha.categories import get_retired_entities_for_device
+
+    gone = {"device_status", "food_in_bowl", "food_bowl_pct",
+            "amount_eaten", "eating", "battery_installed"}
+    d4 = Device(device_type="d4", petkit_id=1, serial_number="SN")
+    assert not gone & {e.key for e in get_entities_for_device(d4)}
+    assert {e.key for e in get_retired_entities_for_device(d4)} == gone
+    d3 = Device(device_type="d3", petkit_id=2, serial_number="SN")
+    assert gone <= {e.key for e in get_entities_for_device(d3)}

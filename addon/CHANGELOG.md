@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- **A D4 no longer shows six entities it can never fill.** Food in Bowl, Food
+  Bowl Level, Amount Eaten, Eating, Device Status and Battery Installed came
+  from PetKit's cloud vocabulary; a Fresh Element Solo has no bowl scale and
+  no eating detection, and its own report carries no work state and no
+  `batteryPower`. None of the six was in any of 77 state reports or the meal
+  reports of two D4s (fw 1.267, captured 2026-10-23/24). They are cleared from
+  Home Assistant, not just left unannounced.
+
 ## 2.1.6 — 2026-10-23
 
 - **A device that comes back after a restart is available in HA again.**
