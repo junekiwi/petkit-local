@@ -19,6 +19,9 @@ from petkit_local.patchers.verify import assert_ca_bundle
 log = logging.getLogger(__name__)
 
 
+#: Lazy on purpose, unlike `patchers/firmware.py`'s anchored pattern: a block in
+#: the device's bundle that is not clean PEM must still be FOUND, because
+#: `patch_ca_bundle` keeps every block it cannot parse rather than dropping a CA.
 _PEM_BLOCK = re.compile(
     rb"-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----", re.DOTALL)
 

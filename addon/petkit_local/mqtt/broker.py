@@ -13,7 +13,6 @@ the client that joins them.
 from __future__ import annotations
 
 import datetime
-import ipaddress
 import logging
 import os
 import socket
@@ -27,6 +26,7 @@ from petkit_local.config import _supervisor_host_ip
 from petkit_local.devices.registry import DeviceRegistry
 from petkit_local.mqtt import protocol_compat
 from petkit_local.mqtt.auth import AliyunAuthPlugin, parse_client_id
+from petkit_local.utils.tls import subject_alt_names
 
 if TYPE_CHECKING:
     from petkit_local.web.hub import EventHub
@@ -139,18 +139,7 @@ def ensure_self_signed(cert_path: str, key_path: str,
         host_ip = _get_host_ip()
         key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
         name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "petkit-local")])
-        san_names = [x509.DNSName("petkit-local")]
-        seen: set[str] = set()
-        for host in ([host_ip] if host_ip else []) + wanted:
-            if not host or host in seen:
-                continue
-            seen.add(host)
-            try:
-                san_names.append(x509.IPAddress(ipaddress.ip_address(host)))
-            except ValueError:
-                # Not an address, so it is a name — and a name is exactly the
-                # case an IP SAN can never satisfy.
-                san_names.append(x509.DNSName(host))
+        san_names = subject_alt_names(["petkit-local", host_ip or "", *wanted])
         now = datetime.datetime.now(datetime.timezone.utc)
         cert = (
             x509.CertificateBuilder()

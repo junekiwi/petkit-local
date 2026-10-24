@@ -50,8 +50,9 @@ petkit_local/
 ├── web/           panel.py the application + the whole route table · api/ the JSON handlers
 │                  appkeys.py the app[...] contract · hub.py event ring/WS · static/ · templates/
 ├── patchers/      on-device patches: cacert · mqtt · cloud · camera · ssh
+│                  firmware (ESP32: a whole image rebuilt, not a file on a device)
 ├── ai/pets.py     pet CRUD + the face photos the device's NPU matches against
-└── utils/         const · crypto · capture · jsonio · paths · coerce · dicts · timeutil
+└── utils/         const · crypto · tls · capture · jsonio · paths · coerce · dicts · timeutil
 ```
 
 **Layering.** `devices` depends only on `events` and `utils` — it does not know Home Assistant
