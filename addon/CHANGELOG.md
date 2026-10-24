@@ -1,20 +1,6 @@
 # Changelog
 
-## Unreleased
-
-- **A patched T3/T4/D4 now reaches the local MQTT broker.** Once its firmware
-  has been flashed `patched` from the Patchers tab, the device is handed its
-  own broker name instead of the `petkit-local-http` placeholder, and the
-  broker presents a certificate — signed by the same CA its firmware now
-  trusts — whenever a device asks for a `*.iot-as-mqtt.*.aliyuncs.com` name by
-  SNI (`mqtt/broker.py`). Point that name at this add-on in your DNS (the
-  firmware card shows it and whether it resolves here) and the device connects
-  over MQTT, with commands pushed in under a second instead of waiting out the
-  ~10 s heartbeat. Every other device — unpatched ESP32, or a Linux model
-  trusting the self-signed `broker.crt` — is unaffected. A device with a flash
-  job still armed is kept on HTTP until it finishes, since that is where the
-  OTA is delivered. HTTP remains the bootstrap, the fallback and the only
-  transport an unpatched device has; MQTT is the upgrade the patch unlocks.
+## 2.2.0 — 2026-10-24
 
 - **Groundwork for local MQTT on the ESP32 models (T3/T4/D3/D4/D4S): a firmware
   CA-swap patcher engine.** These models trust exactly one root for MQTT TLS,
@@ -34,10 +20,7 @@
   MD5. The same party's patched T4 1.652 verifies as intact and has the D4's
   layout to the byte (six segments, hash appended, a 1280-byte CRLF slot), so
   one CA fits both. `issue_server_cert` mints the matching broker leaf (CN and
-  SAN = `<productKey>.iot-as-mqtt.<region>.aliyuncs.com`). On-device delivery over OTA
-  — apply, and rollback to the retained stock image — plus the broker/DNS wiring
-  that points the device at our broker, are the next step; nothing here reaches
-  a device yet.
+  SAN = `<productKey>.iot-as-mqtt.<region>.aliyuncs.com`).
 
 - **Flashing the ESP32 CA swap from the panel, and rolling it back.** The
   Patchers tab now has a card for a T3, T4 or D4. **Fetch from PetKit** asks
@@ -52,6 +35,20 @@
   device's other firmware partition keeps what it ran before, as the
   bootloader's fallback. Proxy mode no longer replaces an armed offer with its
   own "no update". Not yet flashed onto a device by this code.
+
+- **A patched T3/T4/D4 now reaches the local MQTT broker.** Once its firmware
+  has been flashed `patched` from the Patchers tab, the device is handed its
+  own broker name instead of the `petkit-local-http` placeholder, and the
+  broker presents a certificate — signed by the same CA its firmware now
+  trusts — whenever a device asks for a `*.iot-as-mqtt.*.aliyuncs.com` name by
+  SNI (`mqtt/broker.py`). Point that name at this add-on in your DNS (the
+  firmware card shows it and whether it resolves here) and the device connects
+  over MQTT, with commands pushed in under a second instead of waiting out the
+  ~10 s heartbeat. Every other device — unpatched ESP32, or a Linux model
+  trusting the self-signed `broker.crt` — is unaffected. A device with a flash
+  job still armed is kept on HTTP until it finishes, since that is where the
+  OTA is delivered. HTTP remains the bootstrap, the fallback and the only
+  transport an unpatched device has; MQTT is the upgrade the patch unlocks.
 
 ## 2.1.7 — 2026-10-24
 
