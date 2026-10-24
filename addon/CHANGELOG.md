@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.1.7 — 2026-10-24
 
 - **A D4 no longer shows six entities it can never fill.** Food in Bowl, Food
   Bowl Level, Amount Eaten, Eating, Device Status and Battery Installed came
