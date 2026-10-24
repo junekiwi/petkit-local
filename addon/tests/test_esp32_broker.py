@@ -81,6 +81,15 @@ def test_only_a_product_key_broker_name_asks_for_the_esp32_leaf(name, matches):
     assert bool(esp32_ota.BROKER_NAME_RE.match(name)) is matches
 
 
+def test_the_http_only_placeholder_never_asks_for_the_leaf():
+    # The placeholder matches the broker-name shape, but it exists to be refused
+    # at TLS so a device kept on HTTP stays there — so it must be excluded.
+    assert esp32_ota.wants_esp32_leaf(ESP32_NAME)
+    assert not esp32_ota.wants_esp32_leaf(esp32_ota.HTTP_ONLY_BROKER_NAME)
+    assert not esp32_ota.wants_esp32_leaf(esp32_ota.HTTP_ONLY_BROKER_NAME.upper())
+    assert not esp32_ota.wants_esp32_leaf("petkit-local")
+
+
 # --------------------------------------------------------------------------- #
 # The handshake                                                               #
 # --------------------------------------------------------------------------- #
@@ -155,6 +164,17 @@ def test_the_default_cert_does_not_satisfy_the_device(tmp_path, stock_image):
     server_ctx.set_ciphers("DEFAULT:@SECLEVEL=0")
     with pytest.raises(ssl.SSLError):
         _handshake(server_ctx, _device_context(tmp_path), ESP32_NAME)
+
+
+def test_the_http_only_placeholder_name_is_served_the_default_cert(tmp_path, stock_image):
+    # A device kept on HTTP dials the placeholder name. Even with the SNI
+    # callback in place — and even if a wildcard DNS record pointed that name
+    # here — it must get the default broker.crt, which the ESP32 CA did not
+    # sign, so its TLS is refused and it stays on the heartbeat.
+    _store(tmp_path, stock_image)
+    with pytest.raises(ssl.SSLError):
+        _handshake(_server_context(tmp_path), _device_context(tmp_path),
+                   esp32_ota.HTTP_ONLY_BROKER_NAME)
 
 
 def test_a_name_that_is_not_an_esp32_broker_keeps_the_default_cert(tmp_path, stock_image):

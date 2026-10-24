@@ -28,7 +28,7 @@ from petkit_local.devices.registry import DeviceRegistry
 from petkit_local.mqtt import protocol_compat
 from petkit_local.mqtt.auth import AliyunAuthPlugin, parse_client_id
 from petkit_local.patchers.esp32_ota import (
-    BROKER_NAME_RE, broker_leaf_paths, ensure_broker_leaf,
+    broker_leaf_paths, ensure_broker_leaf, wants_esp32_leaf,
 )
 from petkit_local.utils.tls import subject_alt_names
 
@@ -224,7 +224,7 @@ class Esp32Certificate:
         connecting, and the fallback — the default certificate — is the
         behaviour every device had before this existed.
         """
-        if not server_name or not BROKER_NAME_RE.match(server_name):
+        if not server_name or not wants_esp32_leaf(server_name):
             return
         try:
             ctx = self.context()

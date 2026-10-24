@@ -60,6 +60,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from petkit_local.devices.base import aliyun_broker_name
+from petkit_local.devices.payloads import HTTP_ONLY_PRODUCT_KEY
 from petkit_local.patchers.common import md5hex
 from petkit_local.patchers.firmware import (
     FirmwareImageError, find_cert_slot, format_cert_pem, generate_ca_for_slot,
@@ -189,6 +190,28 @@ BROKER_NAME_RE = re.compile(r"^[^.]+\.iot-as-mqtt\.[^.]+\.aliyuncs\.com$", re.IG
 #: exactly one label, which is all the product key is. localkit's broker
 #: certificate is the same wildcard, on the same firmware.
 BROKER_LEAF_NAME = aliyun_broker_name("*")
+
+#: The one broker name that must NOT be shown the leaf: the placeholder a device
+#: kept on HTTP is handed (`devices/payloads.HTTP_ONLY_PRODUCT_KEY`). That name
+#: exists to be REFUSED at TLS so the device falls back to the heartbeat; the
+#: wildcard leaf would also fit it, so it is excluded explicitly.
+HTTP_ONLY_BROKER_NAME = aliyun_broker_name(HTTP_ONLY_PRODUCT_KEY)
+
+
+def wants_esp32_leaf(server_name: str) -> bool:
+    """Whether a device dialling `server_name` should be shown the ESP32 leaf.
+
+    Every `<productKey>.iot-as-mqtt.<region>.aliyuncs.com` name except the
+    HTTP-only placeholder's. A device kept on HTTP — one with a flash job still
+    armed, or any model with `esp32_http_only` on — is handed that placeholder
+    so its MQTT TLS is refused and it stays on the heartbeat where the OTA is
+    delivered. Serving it a leaf our CA signed would let a patched one reach
+    MQTT anyway if DNS points the placeholder name here too (a wildcard
+    record), stranding the flash. The default `broker.crt`, which the ESP32 CA
+    did not sign, keeps that refusal intact.
+    """
+    return (bool(BROKER_NAME_RE.match(server_name))
+            and server_name.lower() != HTTP_ONLY_BROKER_NAME.lower())
 
 
 def broker_leaf_paths(data_dir: str) -> tuple[str, str]:
