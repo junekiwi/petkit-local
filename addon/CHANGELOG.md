@@ -11,12 +11,16 @@
   root for a CA we hold the key to, leaving the image otherwise byte-identical
   and TLS verification intact: the trust anchor moves, nothing is disabled. It
   sizes a 2048-bit CA to the firmware's exact cert slot (CRLF-framed, DER length
-  tuned to the byte), recomputes the ESP-IDF segment checksum and appended
-  SHA-256 that the swap invalidates, and re-parses the result before it could be
-  offered to a device. Proven byte-for-byte: fed a real D4 1.267 image and a
+  tuned to the byte), verifies the stock image's own segment checksum and
+  appended SHA-256 before touching it — a corrupted download is refused, not
+  re-signed into one that looks valid — recomputes both after the swap, and
+  checks the result differs from stock in the slot and those two fields and
+  nowhere else. Proven byte-for-byte: fed a real D4 1.267 image and a
   known-working third-party patched image's CA, it reproduces that image's exact
-  MD5. `issue_server_cert` mints the matching broker leaf (CN =
-  `<productKey>.iot-as-mqtt.<region>.aliyuncs.com`). On-device delivery over OTA
+  MD5. The same party's patched T4 1.652 verifies as intact and has the D4's
+  layout to the byte (six segments, hash appended, a 1280-byte CRLF slot), so
+  one CA fits both. `issue_server_cert` mints the matching broker leaf (CN and
+  SAN = `<productKey>.iot-as-mqtt.<region>.aliyuncs.com`). On-device delivery over OTA
   — apply, and rollback to the retained stock image — plus the broker/DNS wiring
   that points the device at our broker, are the next step; nothing here reaches
   a device yet.
