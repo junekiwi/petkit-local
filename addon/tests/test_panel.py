@@ -1372,9 +1372,22 @@ def test_proxy_dependent_controls_are_gated_on_proxy_mode():
     # ...and that helper appends the greying class inside one interpolation.
     assert re.search(r"ctrl\$\{\s*on\s*\?[^}]*disabled", js)
     assert re.search(r"\.ctrl\.disabled\s*\{", css)
-    # The upstream picker and the blocked table are hidden outright.
-    assert re.search(r"\$\{\s*on\s*\?(?:.|\n){0,400}?Upstream server", js)
+    # The live upstream status and the blocked table are hidden outright.
+    assert re.search(r"\$\{\s*on\s*\?(?:.|\n){0,200}?upstreamStatus", js)
     assert re.search(r"\$\{\s*on\s*\?(?:.|\n){0,200}?blockedView", js)
+
+
+def test_the_upstream_and_dns_controls_show_without_proxy_mode():
+    """They drive firmware fetch too, not only proxy mode, so gating them on
+    proxy mode left no way to set the DNS override a redirected LAN needs for a
+    fetch — the 2.2.0 regression. They must sit in the card unconditionally,
+    which is exactly the inversion of what the test above checks for the live
+    status and the blocked table."""
+    js = _panel_js()
+    assert "save-proxy-dns" in js and 'id="proxyDns"' in js
+    assert "save-upstream" in js
+    assert not re.search(r"\$\{\s*on\s*\?(?:.|\n){0,400}?Upstream server", js)
+    assert not re.search(r"\$\{\s*on\s*\?(?:.|\n){0,400}?proxyDns", js)
 
 
 def test_the_photo_cap_agrees_with_the_store():

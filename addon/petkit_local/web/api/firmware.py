@@ -14,6 +14,7 @@ import asyncio
 import logging
 import socket
 from typing import Any
+from urllib.parse import urlparse
 
 import aiohttp
 from aiohttp import web
@@ -94,6 +95,38 @@ async def resolve(name: str) -> list[str]:
     except (OSError, asyncio.TimeoutError):
         return []
     return sorted({info[4][0] for info in infos})
+
+
+async def _refuse_if_upstream_is_self(app: web.Application, upstream: str, dns: str) -> None:
+    """Fail early, and say why, if PetKit's name points back at this add-on.
+
+    A LAN that redirects PetKit's names here answers OUR lookup with this host
+    too, so the fetch would dial ourselves on 443 — the MQTT port, not an HTTP
+    API — and return an opaque connect error with no hint of the cause. Caught
+    here, it becomes one line that says exactly what to change.
+
+    Only meaningful when the fetch will use the system resolver (`dns` empty):
+    with a resolver set, that resolver is the one doing the lookup, and asking
+    the system one instead would answer for a different name than the fetch sees.
+    Refuses only when EVERY address is ours — a name that also resolves
+    elsewhere is reachable and left alone.
+    """
+    if dns:
+        return
+    host = urlparse(upstream).hostname
+    if not host:
+        return
+    self_host = self_mqtt_host(app["cfg"])
+    ours = set(await resolve(self_host))
+    if self_host:
+        ours.add(self_host)
+    theirs = set(await resolve(host))
+    if theirs and theirs <= ours:
+        raise CloudRefused(
+            f"{host} resolves to this add-on ({', '.join(sorted(theirs))}), so the "
+            "fetch would reach itself instead of PetKit. Your DNS points PetKit's "
+            "names here; set 'DNS for upstream lookups' in Setup to a public resolver "
+            "(e.g. 1.1.1.1) and try again.")
 
 
 async def api_firmware_action(request: web.Request) -> web.Response:
@@ -190,11 +223,12 @@ async def _download_and_store(app: web.Application, device: Any, say) -> esp32_o
     """
     live = app.get("live_config") or {}
     dns = live.get("proxy_dns", "")
+    upstream = resolve_upstream(live.get("proxy_upstream", ""))
+    await _refuse_if_upstream_is_self(app, upstream, dns)
     connector = aiohttp.TCPConnector(resolver=UpstreamResolver(dns)) if dns else None
     async with aiohttp.ClientSession(timeout=FIRMWARE_TIMEOUT, connector=connector) as session:
         say("asking PetKit for this model's current firmware...")
-        listing = await fetch_firmware_listing(
-            session, resolve_upstream(live.get("proxy_upstream", "")), device)
+        listing = await fetch_firmware_listing(session, upstream, device)
         manifest = esp32_ota.validate_manifest(listing)
         say(f"PetKit lists {manifest['version']} (the device runs "
             f"{device.firmware or 'an unknown version'}): "

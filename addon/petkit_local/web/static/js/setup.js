@@ -51,9 +51,12 @@ async function saveRetention() {
 }
 
 // The proxy guards stay VISIBLE but disabled while proxy mode is off: hiding
-// "RCE guard is on" would be worse than showing it inactive. The upstream
-// picker and the blocked-attempts table are hidden outright — they say nothing
-// at all when nothing is being forwarded.
+// "RCE guard is on" would be worse than showing it inactive. The upstream and
+// DNS controls are shown always, not just with proxy mode on: firmware fetch
+// reaches PetKit's cloud the same way, so a LAN that redirects PetKit's names
+// needs them set even with proxy mode off — which is where a fetch otherwise
+// loops back to this app. The blocked-attempts table and the live upstream
+// status stay hidden until proxy mode is on; they say nothing otherwise.
 const CUSTOM_UPSTREAM = '__custom__';
 
 async function loadSetup() {
@@ -88,9 +91,9 @@ async function loadSetup() {
       <label class="ctrl"><span>Proxy mode<br><span class="mut" style="font-size:11px">forward every device request to the real PetKit cloud and answer with its reply</span></span>${sw('proxy_mode', s.proxy_mode)}</label>
       <label class="ctrl"><span>Traffic capture<br><span class="mut" style="font-size:11px">record HTTP + MQTT to JSONL (see Capture tab)</span></span>${sw('capture', s.capture)}</label>
     </div>
-    ${
-      on
-        ? `<div style="margin-top:14px"><label class="mut">Upstream server</label>
+    <div style="margin-top:14px"><label class="mut">Upstream server${help(
+      'Where to reach PetKit’s real cloud — for proxy mode, and for fetching firmware on the Patchers tab. The default suits most people.',
+    )}</label>
       <span class="cn" style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap">
         <select id="proxyUpSel" ${w ? '' : 'disabled'} data-change="save-upstream">
           ${presets.map(u => `<option value="${esc(u.key)}" ${sel === u.key ? 'selected' : ''}>${esc(u.key)} — ${esc(u.url)}</option>`).join('')}
@@ -105,14 +108,12 @@ async function loadSetup() {
           : ''
       }
       <label class="mut" style="display:block;margin-top:10px">DNS for upstream lookups${help(
-        'Only used to find the server above. Leave empty unless your router or Pi-hole points PetKit’s names at this app — then it would point them here for us too, and proxy mode would reach itself instead of the cloud.',
+        'Used to find the server above — for proxy mode and for firmware fetch. Leave empty unless your router or Pi-hole points PetKit’s names at this app: then it points them here for us too, and a fetch or proxy reaches this app instead of the cloud. Set a public resolver (e.g. 1.1.1.1) to look past that.',
       )}</label>
       <span class="cn" style="display:flex;gap:6px;margin-top:4px">
         <input id="proxyDns" value="${esc(s.proxy_dns || '')}" ${w ? '' : 'disabled'} placeholder="empty = system resolver">
         <button class="mini" ${w ? '' : 'disabled'} data-action="save-proxy-dns">Set</button></span>
-    </div>`
-        : ''
-    }
+    </div>
     <p class="sub" style="margin-top:14px">${on ? 'Removed from the cloud’s replies:' : 'Guards for proxy mode — inactive until it is on.'}</p>
     <div class="ctrls">
       ${guard('proxy_block_run_cmd', 'proxy_block_run_cmd' in s ? s.proxy_block_run_cmd : true, 'Block run_cmd <span class="badge warn">RCE guard</span>', 'strip shell commands the cloud tries to run on the device')}

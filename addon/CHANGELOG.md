@@ -1,5 +1,23 @@
 # Changelog
 
+## 2.2.1 — 2026-10-24
+
+- **The upstream server and DNS fields are no longer hidden while proxy mode is
+  off.** They govern every call this app makes to PetKit's cloud — including the
+  firmware fetch added in 2.2.0 — but the Setup tab only showed them with proxy
+  mode on, so fetching firmware on a LAN that redirects PetKit's names (the very
+  setup that needs the DNS override) left nowhere to set it. Both controls are
+  shown always now; only the live upstream status and the blocked-attempts table
+  stay tied to proxy mode.
+
+- **A firmware fetch that would loop back to this app now says so, before it
+  tries.** On a LAN that points PetKit's names here, the add-on's own lookup
+  resolves here too, so the fetch dialled itself on 443 — the MQTT port, not an
+  HTTP API — and failed with an opaque connect error. It now checks first, and
+  when PetKit's name resolves only to this host it refuses with one line naming
+  the setting to change and a resolver to use. Skipped when a DNS override is
+  already set: that resolver, not the system one, is then what the fetch asks.
+
 ## 2.2.0 — 2026-10-24
 
 - **Groundwork for local MQTT on the ESP32 models (T3/T4/D3/D4/D4S): a firmware
