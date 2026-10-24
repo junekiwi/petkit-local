@@ -963,6 +963,52 @@ class EventStore:
                     Event.event_type.in_(types),
                     Event.ts >= day_start)) or 0
 
+    async def device_feeds_today(self, device_id: int, device_type: str,
+                                 now: float | None = None) -> list[dict[str, Any]]:
+        """The `content` of every feed this device finished since local midnight.
+
+        Oldest first, so `main/lifecycle.py` can replay them at startup through
+        `events/normalize.py::seed_feed_state`, the accumulator the live reports
+        go through, to rebuild Times Dispensed and Total Dispensed. A content
+        that does not decode comes back as `{}`, which that accumulator skips.
+
+        Local midnight, as in `device_visit_count_today`.
+        """
+        types = codes.feed_done_event_types(device_type)
+        if not types:
+            return []
+        day_start = local_day_start(now if now is not None else time.time())
+        async with self._read() as session:
+            rows = await session.scalars(
+                select(Event.content_json).where(
+                    Event.device_id == device_id,
+                    Event.event_type.in_(types),
+                    Event.ts >= day_start).order_by(Event.ts))
+            out: list[dict[str, Any]] = []
+            for raw in rows:
+                try:
+                    content = json.loads(raw) if raw else {}
+                except (json.JSONDecodeError, TypeError):
+                    content = {}
+                out.append(content if isinstance(content, dict) else {})
+            return out
+
+    async def device_last_feed_ts(self, device_id: int, device_type: str) -> float | None:
+        """When this device last finished a feed, today or not; None if never.
+
+        Backs Last Feed across a restart. Not limited to today, unlike
+        `device_feeds_today`: a restart before the first meal of the day would
+        otherwise blank a sensor that has a perfectly good answer.
+        """
+        types = codes.feed_done_event_types(device_type)
+        if not types:
+            return None
+        async with self._read() as session:
+            return await session.scalar(
+                select(func.max(Event.ts)).where(
+                    Event.device_id == device_id,
+                    Event.event_type.in_(types)))
+
     async def pets_for_device(self, device_id: int) -> list[dict[str, Any]]:
         """Pets linked to one device, filtered in Python rather than in SQL.
 

@@ -16,6 +16,12 @@
 - **Last Feed moves only when food is dispensed.** On the camera feeders a
   cat finishing its meal (`eat_over`) counted as a finished feed, so Last
   Feed jumped to whenever a cat walked away from the bowl.
+- **A restart no longer blanks a feeder's Times Dispensed, Total Dispensed and
+  Last Feed.** They were summed in memory from the day's meal reports, so every
+  add-on update showed them unknown until the next meal, hours away on a
+  feeder that eats three times a day. They are now rebuilt from the event
+  store at startup, as a T4's Times Used already was; Last Feed from the
+  newest feed on record, even if it was yesterday's.
 
 ## 2.1.6 — 2026-10-23
 

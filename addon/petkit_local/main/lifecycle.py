@@ -21,7 +21,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from petkit_local.devices.state_parsers import reports_used_times
 from petkit_local.events.ingest import _MODULE_TYPE_TO_CATEGORY, backfill_event_rows
-from petkit_local.events.normalize import visit_day_key
+from petkit_local.events.normalize import seed_feed_state, visit_day_key
 from petkit_local.http.bucket import create_bucket_app
 from petkit_local.http.handlers.upload_file_info import wait_for_pending as wait_for_media_tasks
 from petkit_local.media.retention import RetentionSweeper
@@ -105,6 +105,30 @@ async def _seed_visit_counts(registry: Any, event_store: Any) -> None:
                  device.device_type, device.petkit_id, count)
 
 
+async def _seed_feed_state(registry: Any, event_store: Any) -> None:
+    """Restore a feeder's Times Dispensed, Total Dispensed and Last Feed.
+
+    The same restart problem as `_seed_visit_counts`, for every feeder: the
+    running totals live in `Device.state`, and the event store has the feeds
+    they were summed from. A store that cannot answer is not fatal either --
+    the totals start again from the next feed.
+    """
+    for device in registry.all():
+        if not device.is_feeder:
+            continue
+        try:
+            feeds = await event_store.device_feeds_today(device.petkit_id, device.device_type)
+            last = await event_store.device_last_feed_ts(device.petkit_id, device.device_type)
+        except SQLAlchemyError:
+            log.warning("Could not seed feed totals for %s %s; they will start from "
+                        "the next feed", device.device_type, device.petkit_id,
+                        exc_info=True)
+            continue
+        seed_feed_state(device, feeds, last)
+        log.info("Seeded feed totals for %s %s from the event store: %d feeds today",
+                 device.device_type, device.petkit_id, len(feeds))
+
+
 async def start_background(services: Services, app_instance: web.Application) -> None:
     """aiohttp on_startup hook: open the store, then spawn every service.
 
@@ -153,8 +177,10 @@ async def start_background(services: Services, app_instance: web.Application) ->
     # restart at 18:00 would otherwise report a box that had been used five
     # times that day as unused until the next visit. The event store has the
     # visits; this is the one moment both it and the devices are ready and
-    # nothing has read the state yet.
+    # nothing has read the state yet. A feeder's day of feeds and its Last Feed
+    # are in the same position.
     await _seed_visit_counts(registry, event_store)
+    await _seed_feed_state(registry, event_store)
 
     # Web panel, over HTTP only, and deliberately not served a SECOND time on
     # an HTTPS port of its own. A self-signed listener with no authentication

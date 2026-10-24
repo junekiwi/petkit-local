@@ -1,4 +1,5 @@
 import asyncio
+import json
 import sqlite3
 import tempfile
 import time
@@ -464,3 +465,50 @@ async def test_visit_count_is_zero_for_a_device_that_has_no_visits(
     await event_store.upsert_event({"device_id": 9, "event_type": "10",
                                     "event_kind": "feeding", "ts": now})
     assert await event_store.device_visit_count_today(9, "d4h") == 0
+
+
+# --- the day's feeds that seed Times Dispensed and Last Feed ----------------
+
+def _feed(device_id, ts, event_type="4", **content):
+    return {"device_id": device_id, "event_type": event_type, "event_kind": "feeding",
+            "ts": ts, "event_uid": f"{device_id}_{ts}:{event_type}",
+            "content_json": json.dumps(content) if content else None}
+
+
+async def test_feeds_today_are_the_finished_feeds_oldest_first(event_store: EventStore):
+    """A feed start (`1`) and a cat finishing its meal (`eat_over`) share the
+    feeding kind; only a finished feed counts, or the rebuilt totals would
+    disagree with the running ones."""
+    now = time.time()
+    await event_store.upsert_event(_feed(7, now - 20, real_amount=10, day=1))
+    await event_store.upsert_event(_feed(7, now - 15, event_type="1"))
+    await event_store.upsert_event(_feed(7, now - 10, event_type="eat_over"))
+    await event_store.upsert_event(_feed(7, now - 5, event_type="feed_over", real_amount=20))
+    feeds = await event_store.device_feeds_today(7, "d4h")
+    assert [f.get("real_amount") for f in feeds] == [10, 20]
+
+
+async def test_feeds_today_are_cut_at_local_midnight_and_per_device(
+        event_store: EventStore):
+    now = time.time()
+    await event_store.upsert_event(_feed(7, local_day_start(now) - 60, real_amount=10))
+    await event_store.upsert_event(_feed(8, now, real_amount=10))
+    await event_store.upsert_event(_feed(7, now, real_amount=30))
+    assert await event_store.device_feeds_today(7, "d4", now=now) == [{"real_amount": 30}]
+
+
+async def test_a_feed_whose_content_does_not_decode_is_an_empty_one(
+        event_store: EventStore):
+    await event_store.upsert_event({**_feed(7, time.time()), "content_json": "{not json"})
+    assert await event_store.device_feeds_today(7, "d4") == [{}]
+
+
+async def test_last_feed_is_the_newest_feed_today_or_not(event_store: EventStore):
+    """A restart before the day's first meal must still know yesterday's."""
+    now = time.time()
+    yesterday = local_day_start(now) - 3600
+    await event_store.upsert_event(_feed(7, yesterday - 60, real_amount=10))
+    await event_store.upsert_event(_feed(7, yesterday, real_amount=10))
+    assert await event_store.device_last_feed_ts(7, "d4") == yesterday
+    assert await event_store.device_last_feed_ts(9, "d4") is None
+    assert await event_store.device_last_feed_ts(7, "t4") is None

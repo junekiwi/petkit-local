@@ -1558,3 +1558,14 @@ def is_feed_done(code: EventCode) -> bool:
     """
     return (code.kind == KIND_FEEDING and code.role == ROLE_DONE
             and code.done_word == "feeding")
+
+
+def feed_done_event_types(device_type: str | None) -> list[str]:
+    """The raw event_types that mean "a feed finished" on this model.
+
+    Both namespaces, and derived from the tables, for the reason
+    `visit_summary_event_types` gives: the SQL that rebuilds the day's feeds at
+    startup and the runtime branch that keeps them must count the same thing.
+    """
+    return sorted(key for key, code in codes_for(device_type).items()
+                  if is_feed_done(code))

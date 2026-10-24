@@ -564,8 +564,8 @@ def _accumulate_feed_totals(device: Device, content: dict) -> None:
     so it neither counts nor adds.
 
     NOT persisted: `Device.to_dict` deliberately excludes `state`, and this
-    stays inside it. The totals are lost on restart and rebuilt from the day's
-    remaining feeds, which is the same trade every other `state` key makes.
+    stays inside it. `seed_feed_state` rebuilds the day from the event store at
+    startup instead, through this same function.
     """
     grams = sum(
         to_float(content.get(key), 0) or 0
@@ -583,6 +583,23 @@ def _accumulate_feed_totals(device: Device, content: dict) -> None:
     totals["realAmountTotal"] = round(
         (to_float(totals.get("realAmountTotal"), 0) or 0) + grams, 1)
     device.state["feedState"] = totals
+
+
+def seed_feed_state(device: Device, feeds: list[dict], last_feed_ts: float | None) -> None:
+    """Rebuild a feeder's day of feeds and its Last Feed after a restart.
+
+    `Device.to_dict` excludes `state`, so without this a restart blanked Times
+    Dispensed, Total Dispensed and Last Feed until the next meal. `feeds` is
+    today's finished feeds, oldest first (`EventStore.device_feeds_today`),
+    replayed through `_accumulate_feed_totals` so the rebuilt totals and the
+    running ones cannot count differently. `last_feed_ts` is the newest feed on
+    record, today's or not, as the live branch would have dated it.
+    """
+    for content in feeds:
+        _accumulate_feed_totals(device, content)
+    if last_feed_ts is not None:
+        device.state["lastFeed"] = datetime.fromtimestamp(
+            last_feed_ts, timezone.utc).isoformat()
 
 
 def _now_iso() -> str:

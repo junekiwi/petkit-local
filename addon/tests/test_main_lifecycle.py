@@ -20,8 +20,8 @@ from petkit_local.devices.registry import DeviceRegistry
 from petkit_local.events.normalize import visit_day_key
 from petkit_local.http.proxy import close_proxy_session, get_proxy_session
 from petkit_local.http.server import create_app
-from petkit_local.main.lifecycle import (BACKGROUND_TASKS, _seed_visit_counts, _spawn,
-                                         _stop_tasks)
+from petkit_local.main.lifecycle import (BACKGROUND_TASKS, _seed_feed_state,
+                                         _seed_visit_counts, _spawn, _stop_tasks)
 
 CONFIG = {
     "api_url": "http://server/6/",
@@ -395,3 +395,49 @@ async def test_a_store_that_cannot_answer_does_not_stop_startup():
     box = Device(petkit_id=102, device_type="t4", serial_number="SN")
     await _seed_visit_counts(_FakeRegistry([box]), _FakeStore(raises=True))
     assert "usedTimes" not in box.state
+
+
+# --- seeding a feeder's day across a restart ---------------------------------
+
+class _FakeFeedStore:
+    """Answers the day's feeds and the last feed, and records who it was asked about."""
+
+    def __init__(self, feeds=None, last=None, raises=False):
+        self.feeds = feeds or {}
+        self.last = last or {}
+        self.raises = raises
+        self.asked: list[int] = []
+
+    async def device_feeds_today(self, device_id, device_type, now=None):
+        self.asked.append(device_id)
+        if self.raises:
+            raise SQLAlchemyError("db is gone")
+        return self.feeds.get(device_id, [])
+
+    async def device_last_feed_ts(self, device_id, device_type):
+        return self.last.get(device_id)
+
+
+async def test_a_restart_restores_a_feeders_day_and_its_last_feed():
+    """`Device.state` is not persisted, so a restart blanked Times Dispensed,
+    Total Dispensed and Last Feed until the next meal -- hours, on a feeder
+    that eats three times a day."""
+    feeder = Device(petkit_id=200, device_type="d4", serial_number="SN")
+    store = _FakeFeedStore(
+        feeds={200: [{"day": 20261024, "real_amount": 10},
+                     {"day": 20261024, "real_amount": 0},
+                     {"day": 20261024, "real_amount": 15}]},
+        last={200: 1792816239.0})
+    await _seed_feed_state(_FakeRegistry([feeder]), store)
+    # The empty feed is skipped, as it is live.
+    assert feeder.state["feedState"] == {"day": 20261024, "times": 2, "realAmountTotal": 25}
+    assert feeder.state["lastFeed"] == "2026-10-24T04:30:39+00:00"
+
+
+async def test_only_feeders_are_seeded_and_a_failing_store_does_not_stop_startup():
+    box = Device(petkit_id=201, device_type="t4", serial_number="SN")
+    feeder = Device(petkit_id=202, device_type="d4", serial_number="SN")
+    store = _FakeFeedStore(raises=True)
+    await _seed_feed_state(_FakeRegistry([box, feeder]), store)
+    assert store.asked == [202]
+    assert "feedState" not in feeder.state and "lastFeed" not in feeder.state
