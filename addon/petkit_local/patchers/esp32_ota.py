@@ -59,10 +59,11 @@ import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from petkit_local.devices.base import aliyun_broker_name
 from petkit_local.patchers.common import md5hex
 from petkit_local.patchers.firmware import (
     FirmwareImageError, find_cert_slot, format_cert_pem, generate_ca_for_slot,
-    patch_firmware_cert, verify_esp_image,
+    issue_server_cert, patch_firmware_cert, verify_esp_image,
 )
 from petkit_local.utils.const import DEVICE_TYPES_DERIVED_BROKER
 from petkit_local.utils.jsonio import atomic_write_bytes, atomic_write_json, read_json
@@ -169,7 +170,63 @@ def ensure_ca(data_dir: str, template_slot: bytes) -> tuple[bytes, bytes]:
     os.chmod(key_path, 0o600)
     atomic_write_bytes(cert_path, cert)
     log.info("Minted the ESP32 firmware CA at %s", cert_path)
+    ensure_broker_leaf(data_dir)
     return key, cert
+
+
+# --------------------------------------------------------------------------- #
+# The broker's half of the chain                                              #
+# --------------------------------------------------------------------------- #
+
+#: What a patched ESP32 dials, and so the name it sends as SNI and checks the
+#: certificate against: `<productKey>.iot-as-mqtt.<region>.aliyuncs.com`, built
+#: by the firmware from the key it is handed (`devices/base.aliyun_broker_name`).
+#: The Linux models are handed this add-on's own address instead, so no other
+#: device asks for a name of this shape.
+BROKER_NAME_RE = re.compile(r"^[^.]+\.iot-as-mqtt\.[^.]+\.aliyuncs\.com$", re.IGNORECASE)
+
+#: One wildcard covers every device's name: mbedTLS matches a leading `*.` against
+#: exactly one label, which is all the product key is. localkit's broker
+#: certificate is the same wildcard, on the same firmware.
+BROKER_LEAF_NAME = aliyun_broker_name("*")
+
+
+def broker_leaf_paths(data_dir: str) -> tuple[str, str]:
+    """`(cert_path, key_path)` of the leaf the broker shows a patched ESP32."""
+    certs = os.path.join(data_dir, "certs")
+    return os.path.join(certs, "esp32-broker.crt"), os.path.join(certs, "esp32-broker.key")
+
+
+def ensure_broker_leaf(data_dir: str) -> tuple[str, str] | None:
+    """The broker leaf signed by the current CA, issued if missing or stale.
+
+    Stale means signed by some other key — a CA that was re-minted after the
+    store was cleared. Returns None while there is no CA at all.
+    """
+    ca = load_ca(data_dir)
+    if ca is None:
+        return None
+    from cryptography import x509  # noqa: PLC0415 - optional dependency, probed at use
+    from cryptography.hazmat.primitives.asymmetric import padding  # noqa: PLC0415
+
+    ca_key, ca_cert = ca
+    cert_path, key_path = broker_leaf_paths(data_dir)
+    if os.path.isfile(cert_path) and os.path.isfile(key_path):
+        try:
+            with open(cert_path, "rb") as f:
+                leaf = x509.load_pem_x509_certificate(f.read())
+            issuer = x509.load_pem_x509_certificate(ca_cert)
+            issuer.public_key().verify(leaf.signature, leaf.tbs_certificate_bytes,
+                                       padding.PKCS1v15(), leaf.signature_hash_algorithm)
+            return cert_path, key_path
+        except Exception:  # noqa: BLE001 - unreadable or foreign: issue a fresh one
+            log.info("ESP32 broker certificate is not signed by the current CA; re-issuing")
+    leaf_key, leaf_cert = issue_server_cert(ca_key, ca_cert, BROKER_LEAF_NAME)
+    atomic_write_bytes(key_path, leaf_key)
+    os.chmod(key_path, 0o600)
+    atomic_write_bytes(cert_path, leaf_cert)
+    log.info("Issued the ESP32 broker certificate (%s) at %s", BROKER_LEAF_NAME, cert_path)
+    return cert_path, key_path
 
 
 # --------------------------------------------------------------------------- #
@@ -391,6 +448,27 @@ def active_job(device: Device) -> dict[str, Any] | None:
     """The armed job, if there is one."""
     job = firmware_state(device).get("job")
     return job if isinstance(job, dict) else None
+
+
+def uses_local_broker(device: Device) -> bool:
+    """Whether this device should be handed its own broker name.
+
+    True once a job of ours flashed it patched — it now trusts our CA — and
+    while no job is armed. An armed job needs the device on the HTTP heartbeat,
+    where the offer and the nudge reach it, so it is kept there until the job
+    ends, exactly like an unpatched one.
+    """
+    return firmware_state(device).get("running") == PATCHED and active_job(device) is None
+
+
+def http_only(device: Device, option: bool) -> bool:
+    """`esp32_http_only` as it applies to this device: on, unless patched here.
+
+    The one decision for both places a device is handed MQTT credentials —
+    `dev_iot_device_info` and proxy mode's rewrite of PetKit's — passed to
+    `devices/payloads.http_only_broker`, which cannot ask this module itself.
+    """
+    return option and not uses_local_broker(device)
 
 
 def ota_trigger(firmware_id: int) -> dict[str, Any]:

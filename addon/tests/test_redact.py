@@ -11,6 +11,7 @@ import json
 import pytest
 
 from petkit_local.devices import payloads
+from petkit_local.patchers import esp32_ota
 from petkit_local.devices.base import Device
 from petkit_local.http.redact import (
     RULE_MQTT,
@@ -186,6 +187,25 @@ def test_proxy_mode_keeps_an_esp32_model_on_http_too(payload, dig):
                    policy=_policy(device=device, esp32_http_only=False))
     assert dig(body)["productKey"] == device.mqtt_product_key
     assert dig(body)["mqttHost"] == MQTT_HOST
+
+
+@pytest.mark.parametrize("payload,dig", [
+    (ALI, lambda b: b["result"]["ali"]),
+    (FLAT, lambda b: b["result"]),
+])
+def test_proxy_mode_hands_a_patched_esp32_its_own_broker(payload, dig):
+    """Once its firmware trusts our CA, the device's own key is the one whose
+    name DNS points here — unless a firmware job needs it on HTTP."""
+    device = Device(device_type="t4", petkit_id=400062421, serial_number="SNT4")
+    device.config[esp32_ota.STATE_KEY] = {"running": esp32_ota.PATCHED, "job": None}
+    body, _ = _run(payload, endpoint="/6/t4/dev_iot_device_info",
+                   policy=_policy(device=device))
+    assert dig(body)["productKey"] == device.mqtt_product_key
+
+    device.config[esp32_ota.STATE_KEY]["job"] = {"target": "stock", "version": "1.652"}
+    body, _ = _run(payload, endpoint="/6/t4/dev_iot_device_info",
+                   policy=_policy(device=device))
+    assert dig(body)["productKey"] == payloads.HTTP_ONLY_PRODUCT_KEY
 
 
 def test_mqtt_rule_captures_the_real_aliyun_credentials():

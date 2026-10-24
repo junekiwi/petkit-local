@@ -12,6 +12,7 @@ from typing import Any
 
 from petkit_local.devices import payloads
 from petkit_local.http.redact import Redaction, RedactionPolicy, RedactionResult
+from petkit_local.patchers import esp32_ota
 
 RULE_RCE = "rce"
 RULE_OTA = "ota"
@@ -269,7 +270,8 @@ def _match_mqtt(node: dict, path: str, policy: RedactionPolicy,
         "deviceSecret": device.mqtt_device_secret,
         "iotInstanceId": device.mqtt_product_key,
     }
-    http_only = payloads.http_only_broker(device, policy.esp32_http_only)
+    http_only = payloads.http_only_broker(
+        device, esp32_ota.http_only(device, policy.esp32_http_only))
     if http_only:
         product_key, ours["mqttHost"] = http_only
         ours["productKey"] = ours["iotInstanceId"] = product_key

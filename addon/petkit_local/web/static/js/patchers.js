@@ -83,6 +83,27 @@ function firmwareCard(dev, fw) {
       'Last job',
       `<span class="badge ${last.ok ? 'ok' : 'warn'}">${esc(last.target)}: ${last.ok ? 'done' : 'failed'}</span> <span class="mut">${esc(last.detail)}</span>`,
     ]);
+  const b = fw.broker;
+  if (fw.running === 'patched' && b) {
+    const here = b.host && b.resolves_to.includes(b.host);
+    const dns = here
+      ? '<span class="badge ok">points here</span>'
+      : b.resolves_to.length
+        ? `<span class="badge warn">points at ${esc(b.resolves_to.join(', '))}</span>`
+        : '<span class="badge warn">does not resolve</span>';
+    rows.push([
+      'Broker name',
+      `<code>${esc(b.name)}</code> → <code>${esc(b.host || '?')}</code> ${dns}`,
+    ]);
+    rows.push([
+      'MQTT',
+      fw.mqtt_connected
+        ? '<span class="badge ok">connected</span>'
+        : b.in_use
+          ? '<span class="badge warn">not connected</span> <span class="mut">it reconnects when it next boots, once the name above points here</span>'
+          : '<span class="mut">kept on HTTP while a job is armed</span>',
+    ]);
+  }
   if (fw.ca_sha256) rows.push(['CA (SHA-256)', `<code>${esc(fw.ca_sha256.slice(0, 16))}…</code>`]);
   return `<div class="card"><h3>${esc(dev.name)} <span class="chip">${esc(dev.type.toUpperCase())} · #${id}</span></h3>
     <p class="sub">Local MQTT needs this device to trust a certificate this app holds the key to. That certificate is compiled into its firmware, so the whole firmware is rebuilt — PetKit's own image with that one certificate swapped — and flashed over the air. The device keeps the firmware it was running in its other partition, and falls back to it if the new one ever fails to start. PetKit's image is also kept here, and <b>Roll back</b> flashes it back the same way. Keep the device powered while it flashes.</p>
