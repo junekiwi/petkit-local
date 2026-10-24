@@ -63,6 +63,7 @@ from petkit_local.web.api.logs import (
     api_device_log_read, api_device_logs, api_events, api_ws,
 )
 from petkit_local.web.api.media import api_media_file, api_media_thumb
+from petkit_local.web.api.firmware import api_firmware_action, api_firmware_status
 from petkit_local.web.api.patchers import api_patcher_apply, api_patcher_status
 from petkit_local.web.api.pets import (
     api_pet_detail, api_pet_face_detail, api_pet_face_photo, api_pet_faces,
@@ -238,6 +239,9 @@ def create_panel_app(registry: DeviceRegistry, ble_registry: BLERegistry | None,
     # --- patchers (on-device binary patches) ---
     app.router.add_get("/api/devices/{id}/patcher", api_patcher_status)
     app.router.add_post("/api/devices/{id}/patcher", api_patcher_apply)
+    # --- ESP32 firmware (the CA swap, flashed over OTA) ---
+    app.router.add_get("/api/devices/{id}/firmware", api_firmware_status)
+    app.router.add_post("/api/devices/{id}/firmware", api_firmware_action)
 
     # --- settings ---
     app.router.add_get("/api/settings", api_settings)

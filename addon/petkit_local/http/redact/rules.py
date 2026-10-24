@@ -34,7 +34,7 @@ RULE_LOCALE = "locale"
 BLOCKING_RULES = frozenset({RULE_RCE, RULE_OTA})
 
 #: `dev_ota_check` / `dev_ota_heartbeat` are answered with this literal, exactly
-#: as `http/handlers/stubs.py::handle_ota_check` does. An OBJECT — confirmed by
+#: as `http/handlers/ota.py::NO_UPDATE` does. An OBJECT — confirmed by
 #: proxying the endpoint to PetKit on 2026-07-27, which corrected a long-
 #: standing claim that the array was the cloud's shape. A bad answer here is
 #: the one way this server could brick a device.

@@ -51,6 +51,7 @@ petkit_local/
 │                  appkeys.py the app[...] contract · hub.py event ring/WS · static/ · templates/
 ├── patchers/      on-device patches: cacert · mqtt · cloud · camera · ssh
 │                  firmware (ESP32: a whole image rebuilt, not a file on a device)
+│                  esp32_ota (that image stored, offered over OTA, rolled back)
 ├── ai/pets.py     pet CRUD + the face photos the device's NPU matches against
 └── utils/         const · crypto · tls · capture · jsonio · paths · coerce · dicts · timeutil
 ```

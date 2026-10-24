@@ -16,7 +16,10 @@ async function loadPatchers() {
   for (const dev of ds) {
     const p = await api('devices/' + dev.id + '/patcher');
     if (!p.supported) {
-      html += `<div class="card"><h3>${esc(dev.name)} <span class="chip">${esc(dev.type.toUpperCase())} · #${esc(dev.id)}</span></h3><p class="mut">Patchers are only available for the Linux models (T5, T6, T7, D4H, D4SH, W7H). This device uses a different platform.</p></div>`;
+      const fw = await api('devices/' + dev.id + '/firmware');
+      html += fw.supported
+        ? firmwareCard(dev, fw)
+        : `<div class="card"><h3>${esc(dev.name)} <span class="chip">${esc(dev.type.toUpperCase())} · #${esc(dev.id)}</span></h3><p class="mut">Patchers are only available for the Linux models (T5, T6, T7, D4H, D4SH, W7H), and firmware patching for the T3, T4 and D4. This device uses a different platform.</p></div>`;
       continue;
     }
     const ip = p.device_ip || '?';
@@ -53,6 +56,68 @@ async function loadPatchers() {
   }
   v.innerHTML = html;
 }
+// ESP32 models (T3/T4/D4) have no filesystem to patch: the whole firmware is
+// rebuilt with our CA in place of PetKit's and flashed over OTA.
+function firmwareCard(dev, fw) {
+  const id = esc(dev.id);
+  const rel = fw.release;
+  const job = fw.job;
+  const last = fw.last_result;
+  const rows = [
+    ['Device reports', esc(fw.firmware || 'unknown')],
+    [
+      'Stored here',
+      rel
+        ? `${esc(rel.version)} — ${rel.modules.map(m => esc(m.module)).join(', ')}`
+        : 'nothing yet — fetch it from PetKit first',
+    ],
+    ['Flashed from here', esc(fw.running || 'never')],
+  ];
+  if (job)
+    rows.push([
+      'Job',
+      `<span class="badge warn">${esc(job.target)} ${esc(job.version)} — ${job.started_at ? 'flashing' : 'waiting for the device'}</span>`,
+    ]);
+  if (last)
+    rows.push([
+      'Last job',
+      `<span class="badge ${last.ok ? 'ok' : 'warn'}">${esc(last.target)}: ${last.ok ? 'done' : 'failed'}</span> <span class="mut">${esc(last.detail)}</span>`,
+    ]);
+  if (fw.ca_sha256) rows.push(['CA (SHA-256)', `<code>${esc(fw.ca_sha256.slice(0, 16))}…</code>`]);
+  return `<div class="card"><h3>${esc(dev.name)} <span class="chip">${esc(dev.type.toUpperCase())} · #${id}</span></h3>
+    <p class="sub">Local MQTT needs this device to trust a certificate this app holds the key to. That certificate is compiled into its firmware, so the whole firmware is rebuilt — PetKit's own image with that one certificate swapped — and flashed over the air. The device keeps the firmware it was running in its other partition, and falls back to it if the new one ever fails to start. PetKit's image is also kept here, and <b>Roll back</b> flashes it back the same way. Keep the device powered while it flashes.</p>
+    <table class="stbl"><tbody>${rows.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${v}</td></tr>`).join('')}</tbody></table>
+    <div style="margin-top:8px">
+      <button class="ghost act" data-action="fw-action" data-fw="fetch" data-id="${id}">Fetch from PetKit</button>
+      <button class="act" ${rel && !job ? '' : 'disabled'} data-action="fw-action" data-fw="flash" data-id="${id}">Flash patched</button>
+      <button class="ghost act" ${rel && !job ? '' : 'disabled'} data-action="fw-action" data-fw="rollback" data-id="${id}">Roll back to stock</button>
+      ${job ? `<button class="ghost act" data-action="fw-action" data-fw="cancel" data-id="${id}">Cancel job</button>` : ''}
+    </div>
+    <pre id="plog_${id}_esp32fw" style="display:none;margin-top:8px;font-size:11px;max-height:200px;overflow:auto"></pre>
+  </div>`;
+}
+const FW_CONFIRM = {
+  flash:
+    'Flash the patched firmware to this device?\n\nIt is reflashed over the air. Keep it powered until the log says done.',
+  rollback:
+    "Flash PetKit's stock firmware back to this device?\n\nIt is reflashed over the air. Keep it powered until the log says done.",
+};
+onAction('fw-action', async el => {
+  const id = Number(el.dataset.id);
+  const action = el.dataset.fw;
+  if (FW_CONFIRM[action] && !confirm(FW_CONFIRM[action])) return;
+  const lg = document.getElementById('plog_' + id + '_esp32fw');
+  if (lg) lg.style.display = 'block';
+  const r = await api('devices/' + id + '/firmware', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action }),
+  });
+  if (!r.ok) {
+    toast('Error: ' + (r.error || 'failed'));
+    if (lg) lg.textContent += 'ERROR: ' + (r.error || 'failed') + '\n';
+  } else if (action !== 'fetch') loadPatchers();
+});
 onAction('apply-patch', el =>
   applyPatch(Number(el.dataset.id), el.dataset.patcher, el.dataset.name),
 );

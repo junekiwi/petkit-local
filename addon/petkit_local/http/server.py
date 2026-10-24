@@ -40,6 +40,9 @@ from petkit_local.http.handlers.ble_device import handle_ble_device
 from petkit_local.http.handlers.k3_device_info import handle_k3_device_info
 from petkit_local.http.handlers.schedule import handle_schedule_get
 from petkit_local.http.handlers.feed import handle_feed_get
+from petkit_local.http.handlers.ota import (
+    handle_firmware_download, handle_ota_check, handle_ota_progress,
+)
 from petkit_local.http.handlers.upload_file_info import (
     handle_upload_file_info, wait_for_pending as wait_for_media_tasks,
 )
@@ -49,7 +52,6 @@ from petkit_local.http.handlers.upload_log import (
 )
 from petkit_local.http.handlers.stubs import (
     handle_sync_time,
-    handle_ota_check,
     handle_oss_sts,
     handle_video_device_info,
     handle_device_info,
@@ -110,8 +112,8 @@ def create_app(registry: DeviceRegistry, config: dict) -> web.Application:
         app.router.add_route("*", f"{p}/dev_syncTime", handle_sync_time)
         app.router.add_route("*", f"{p}/dev_ota_check", handle_ota_check)
         app.router.add_route("*", f"{p}/dev_ota_heartbeat", handle_ota_check)
-        app.router.add_route("*", f"{p}/dev_ota_start", handle_event_report)
-        app.router.add_route("*", f"{p}/dev_ota_complete", handle_event_report)
+        app.router.add_route("*", f"{p}/dev_ota_start", handle_ota_progress)
+        app.router.add_route("*", f"{p}/dev_ota_complete", handle_ota_progress)
         app.router.add_route("*", f"{p}/dev_oss_sts_info_new", handle_oss_sts)
         app.router.add_route("*", f"{p}/dev_oss_sts_info_new_v2", handle_oss_sts)
         app.router.add_route("*", f"{p}/dev_video_device_info", handle_video_device_info)
@@ -147,6 +149,8 @@ def create_app(registry: DeviceRegistry, config: dict) -> web.Application:
     app.on_cleanup.append(_drain_media_tasks)
 
     app.router.add_route("*", "/patcher/download/{device_id}/{filename}", handle_patcher_download)
+    app.router.add_route(
+        "GET", "/firmware/{device_type}/{version}/{variant}/{filename}", handle_firmware_download)
     app.router.add_route("*", "/faces/{filename}", handle_faces)
     app.router.add_route("*", "/", handle_index)
     app.router.add_route("*", "/{path:.*}", handle_catchall)
