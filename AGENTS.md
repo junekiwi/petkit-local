@@ -106,6 +106,15 @@ Two rules about placement that the map does not make obvious:
   own. A pet imports under a NEW local id with PetKit's id bound as a `device_pet_ids_json` alias,
   because that foreign id is what a box matching against cloud-cached faces actually reports
   (`resolve_pet_ref`); `bind_pet_ref` then names the history retroactively.
+- **An ESP32 is offered firmware only while a job armed in the panel says so.** `dev_ota_check`
+  answers "no update" otherwise, exactly as before (`http/handlers/ota.py`), and the only firmware
+  it ever names is a release stored by `patchers/esp32_ota.py`: PetKit's own image fetched on a
+  button press, MD5- and integrity-checked, kept verbatim for rollback, and the same image with one
+  certificate swapped. A job is ONE pass. The other app partition keeps the image the device ran
+  before, and the bootloader falls back to it only if ours fails verification — the D4 1.267 and
+  T4 1.652 apps have no app rollback (`ESP_OTA_IMG_PENDING_VERIFY` handling is compiled out), so
+  nothing else switches back. A second pass would overwrite that safety net. Proxy mode must not
+  forward an armed offer (`offers_firmware`): redaction turns every OTA reply into "no update".
 - **Never 404 a device.** Unhandled endpoints fall through to `handle_catchall`; firmware reads 4xx
   as a server fault and retries forever. The `/{path:.*}` route stays registered last. Proxy mode
   holds the same line from the far side: an upstream that is unreachable, slow, or that REFUSES

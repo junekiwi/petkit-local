@@ -25,6 +25,20 @@
   that points the device at our broker, are the next step; nothing here reaches
   a device yet.
 
+- **Flashing the ESP32 CA swap from the panel, and rolling it back.** The
+  Patchers tab now has a card for a T3, T4 or D4. **Fetch from PetKit** asks
+  PetKit, signed as the device, for its model's current firmware, checks every
+  module against the size and MD5 PetKit gave, and stores it with a patched
+  `userbin` beside it. **Flash patched** arms a job: `dev_ota_check`, which
+  has only ever answered "no update", offers that release with URLs pointing
+  here, and the device is nudged through its heartbeat (or takes it when it
+  next boots). `dev_ota_start` and `dev_ota_complete` are now recorded against
+  the job instead of being stored as unknown events. **Roll back to stock**
+  serves PetKit's image, kept verbatim, the same way. A job is one pass: the
+  device's other firmware partition keeps what it ran before, as the
+  bootloader's fallback. Proxy mode no longer replaces an armed offer with its
+  own "no update". Not yet flashed onto a device by this code.
+
 ## 2.1.7 — 2026-10-24
 
 - **A D4 no longer shows six entities it can never fill.** Food in Bowl, Food

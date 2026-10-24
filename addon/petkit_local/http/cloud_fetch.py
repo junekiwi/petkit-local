@@ -122,10 +122,21 @@ async def fetch_as_device(session: aiohttp.ClientSession, upstream: str, device,
 
     async with session.get(url, headers=headers, ssl=True) as resp:
         raw = await resp.read()
-        if resp.status != 200:
-            raise CloudRefused(f"{endpoint}: PetKit answered HTTP {resp.status}",
-                               status=resp.status)
+        status = resp.status
+    payload = _decode_reply(endpoint, status, raw)
+    log.info("Asked PetKit for %s as device %d", endpoint, device.petkit_id)
+    return payload
 
+
+def _decode_reply(endpoint: str, status: int, raw: bytes) -> dict[str, Any]:
+    """PetKit's reply as a JSON object, or the refusal it amounts to.
+
+    Raises:
+        CloudRefused: on a non-200, on a body that is not a JSON object, or on
+            a PetKit `error` object (704 by name — see `fetch_as_device`).
+    """
+    if status != 200:
+        raise CloudRefused(f"{endpoint}: PetKit answered HTTP {status}", status=status)
     try:
         payload = json.loads(raw)
     except ValueError:
@@ -143,6 +154,82 @@ async def fetch_as_device(session: aiohttp.ClientSession, upstream: str, device,
                 "with PetKit first.")
         raise CloudRefused(f"{endpoint}: PetKit refused with {code} "
                            f"{error.get('msg', '')}".strip())
-
-    log.info("Asked PetKit for %s as device %d", endpoint, device.petkit_id)
     return payload
+
+
+#: What makes PetKit list a model's whole current firmware rather than only
+#: what is newer than the device's: every version claimed as 1, and `force`.
+#: This is petkit-firmware-tool's request, which is how the stock D4 1.267
+#: image this project's patcher is proven against was obtained. `app` is that
+#: tool's module name for every ESP32 model, and the answer lists the real
+#: ones (`userbin`, and on a T4 `pics` and `lans`) regardless.
+_FIRMWARE_LISTING = {
+    "hardware": "1",
+    "firmware": "1",
+    "firmwareDetails": json.dumps([{"module": "app", "version": 1}]),
+    "force": "1",
+}
+
+#: Firmware is megabytes, not a JSON reply, and comes from a CDN.
+FIRMWARE_TIMEOUT = aiohttp.ClientTimeout(total=180)
+
+
+async def fetch_firmware_listing(session: aiohttp.ClientSession, upstream: str,
+                                 device) -> dict[str, Any]:
+    """Ask PetKit, as `device`, for its model's current firmware.
+
+    Returns:
+        The `result` object: `firmwareId`, `version` and `details[]`, each
+        detail naming a module and the `file` (url, size, MD5 digest) to fetch
+        it from. Not validated here — `patchers/esp32_ota.validate_manifest`
+        owns what a usable one looks like.
+
+    Raises:
+        CloudRefused: as `fetch_as_device`, or when PetKit lists no modules.
+    """
+    url = f"{upstream}/6/{device.device_type}/dev_ota_check"
+    params = {"id": str(device.petkit_id), "mac": device.mac, "sn": device.serial_number,
+              "hardware": "1", "firmware": "1"}
+    headers = {"X-Device": x_device_header(device), "User-Agent": USER_AGENT}
+    async with session.post(url, params=params, data=_FIRMWARE_LISTING,
+                            headers=headers, ssl=True) as resp:
+        raw = await resp.read()
+        status = resp.status
+    result = _decode_reply("dev_ota_check", status, raw).get("result")
+    if not isinstance(result, dict) or not result.get("details"):
+        raise CloudRefused(
+            "dev_ota_check: PetKit listed no firmware for this device. If PetKit's "
+            "names point at this add-on, set an upstream DNS server in Setup.")
+    log.info("Asked PetKit for the firmware of device %d: %s", device.petkit_id,
+             result.get("version"))
+    return result
+
+
+async def download_firmware_module(session: aiohttp.ClientSession, url: str, *,
+                                   size: int, digest: str) -> bytes:
+    """Download one firmware module and prove it is the one PetKit described.
+
+    Read in chunks and abandoned the moment it exceeds `size`, so a server that
+    sends more than it promised cannot make us hold more than one module's
+    worth.
+
+    Raises:
+        CloudRefused: a non-200, or a body whose size or MD5 is not the one
+            the listing gave.
+        aiohttp.ClientError / asyncio.TimeoutError: the download failed.
+    """
+    received = bytearray()
+    async with session.get(url, ssl=True) as resp:
+        if resp.status != 200:
+            raise CloudRefused(f"{url}: HTTP {resp.status}", status=resp.status)
+        async for chunk in resp.content.iter_chunked(65536):
+            received += chunk
+            if len(received) > size:
+                raise CloudRefused(f"{url}: more than the {size} bytes PetKit listed")
+    body = bytes(received)
+    got = hashlib.md5(body).hexdigest()
+    if len(body) != size or got != digest.lower():
+        raise CloudRefused(
+            f"{url}: {len(body)} bytes with MD5 {got}, but PetKit listed "
+            f"{size} bytes with MD5 {digest}")
+    return body
