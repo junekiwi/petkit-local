@@ -196,6 +196,8 @@ PASSTHROUGH_ATTESTED = {
     "ir_b_2": "D4SH 867 ctrl state builder; both reports in issue #2",
     "ir_c": "D4SH 867 ctrl state builder; both reports in issue #2",
     "DCV": "D4SH 867 ctrl state builder; both reports in issue #2 (6228, 6234)",
+    "batV": "D4 fw 1.267: every one of 77 state reports and the meal reports of "
+            "two units, add-on capture 2026-10-23/24 (3862-3868, 4669-4678)",
     "left_hall": "D4SH 867 ctrl sensor{} block; both reports in issue #2",
     "home_hall": "D4SH 867 ctrl sensor{} block; both reports in issue #2",
     "right_hall": "D4SH 867 ctrl sensor{} block; both reports in issue #2",

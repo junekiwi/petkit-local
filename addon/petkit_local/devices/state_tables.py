@@ -255,3 +255,10 @@ FEEDER_NEXT_GEN_FIELDS = (
     # how many meals are scheduled.
     "ready",
 )
+
+#: Flat keys of a D4's (fw 1.267) own report that the family's cloud names do
+#: not cover. Two D4s sent `batV` in every one of 77 state reports and in their
+#: meal reports (captured 2026-10-23/24), reading 3862-3868 and 4669-4678: the
+#: backup batteries, in millivolts. Whether 0 means "none fitted", as it does
+#: on a D4SH, is not known for this model -- both units read non-zero.
+FEEDER_D4_FIELDS = ("batV",)

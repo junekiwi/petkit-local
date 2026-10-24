@@ -9,6 +9,10 @@
   `batteryPower`. None of the six was in any of 77 state reports or the meal
   reports of two D4s (fw 1.267, captured 2026-10-23/24). They are cleared from
   Home Assistant, not just left unannounced.
+- **Battery Voltage on a D4**, a diagnostic sensor in millivolts from the
+  `batV` its state reports carry. Two D4s read about 3.86 V and 4.67 V. Only
+  a meal report used to put the value into the feeder's state, so the hourly
+  state report never refreshed it.
 
 ## 2.1.6 — 2026-10-23
 

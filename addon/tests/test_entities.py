@@ -73,7 +73,8 @@ EXPECTED_ENTITY_COUNTS = {
     # d4s +4 on 2026-10-08: a live D4S feeds with `amount1`/`amount2`, so it
     # gets the dual-hopper feed buttons and portion numbers (upstream PR #43).
     # d4 -6 on 2026-10-24: six entities no D4 report fills; retired from HA.
-    "feeder": 25, "feedermini": 25, "d3": 25, "d4": 19, "d4s": 29,
+    # d4 +1 the same day: Battery Voltage, from the `batV` every report carries.
+    "feeder": 25, "feedermini": 25, "d3": 25, "d4": 20, "d4s": 29,
     # 2026-08-12: replaced `enable_feed_video` button with individual switches
     # (feed_picture, eat_video, voice_prompt, voice_disturb_mode, disturb_mode)
     # and added selected_sound number + play_sound button. Net +6.

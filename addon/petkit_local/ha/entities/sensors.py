@@ -315,6 +315,15 @@ FEEDER_NEXT_GEN_SENSORS = [
               entity_category="diagnostic"),
 ]
 
+#: The D4's backup batteries, from `batV` (`state_tables.FEEDER_D4_FIELDS`).
+#: Published where the D4SH's is not because both D4s seen read non-zero, so
+#: nothing here has yet looked like a flat battery that is really an absent one.
+FEEDER_D4_SENSORS = [
+    EntityDef(component="sensor", key="battery_voltage", name="Battery Voltage",
+              value_path="state.batV", unit="mV", device_class="voltage",
+              entity_category="diagnostic"),
+]
+
 #: Three infrared readings, from a D4SH. Blocking a sensor did raise a "feed
 #: chute blocked" fault, so at least one of them watches the chute — but none
 #: of the three moved while the owner was doing it, so which is which is open.

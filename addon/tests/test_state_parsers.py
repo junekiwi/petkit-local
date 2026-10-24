@@ -412,6 +412,28 @@ def test_a_d4_with_food_is_not_low():
     assert parse_state_report("d4", {"food": 0})["foodLow"] == 1
 
 
+#: A D4's state report, verbatim from the add-on's capture (fw 1.267,
+#: 2026-10-24), with the network names replaced.
+D4_STATE = {
+    "wifi": {"ssid": "ssid", "rsq": -79, "bssid": "000000000000"},
+    "hardware": 1, "firmware": "1.267", "locale": "Europe/Paris", "timezone": "1.0",
+    "err": {"DC": 0, "sys": 0, "rtc_c": 0, "moto": 0, "grat": 0, "blk_f": 0,
+            "blk_d": 0, "ir": 0},
+    "ir": 0, "grat": 0, "batV": 3862, "DCV": 5107, "runtime": 49348, "ubat": 0,
+    "door": 0, "ota": 0, "food": 1, "feeding": 0,
+    "other": "heap:114128,res:1,rl=0,wlp=10,tswd=0_0,boffw=1,won=0,inff=1,"
+             "wres=0,valid:1,snxt:0,cntd:14390,rpts=2",
+}
+
+
+def test_a_d4_report_fills_its_battery_voltage_on_both_transports():
+    """The meal report's raw merge was the only thing putting `batV` into a
+    D4's state, so the hourly state report never refreshed it."""
+    assert parse_state_report("d4", D4_STATE)["batV"] == 3862
+    assert normalize_property_params("d4", D4_STATE)["batV"] == 3862
+    assert "batV" not in parse_state_report("d3", D4_STATE)
+
+
 def test_the_device_ip_still_comes_out_of_the_other_string():
     """Everything downstream of the camera needs it — the stream URL and the
     whole Patchers tab go quiet without one."""

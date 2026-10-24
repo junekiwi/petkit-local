@@ -31,7 +31,8 @@ from typing import Any
 from petkit_local.devices.consumables import (_days_left_from_reset, _extract_consumable_days,
                                               apply_consumable_state, record_consumable_reset)
 from petkit_local.devices.state_tables import (CONSUMABLE_RECORD_KEY, CONSUMABLE_TOTALS,
-                                               DEODORANT_TOTAL_DAYS, FEEDER_HALLS,
+                                               DEODORANT_TOTAL_DAYS, FEEDER_D4_FIELDS,
+                                               FEEDER_HALLS,
                                                FEEDER_NEXT_GEN_FIELDS, LITTER_CAMERA_HALLS,
                                                LITTER_CAMERA_MODELS, PRESENCE_FLAGS,
                                                SNAPSHOT_MARKER, SPRAY_TOTAL_DAYS,
@@ -160,6 +161,19 @@ def _extract_feeder_next_gen(body: dict[str, Any], state: dict[str, Any],
         return
     _extract_camel(body, list(FEEDER_NEXT_GEN_FIELDS), state)
     _extract_sensor_block(body, state, FEEDER_HALLS)
+
+
+def _extract_feeder_d4(body: dict[str, Any], state: dict[str, Any],
+                       device_type: str = "") -> None:
+    """Copy the D4's own fields (`FEEDER_D4_FIELDS`) into `state`.
+
+    Called from both transports for the reason `_extract_feeder_next_gen`
+    gives, although a D4 kept on HTTP only ever reaches `parse_state_report`:
+    a reflashed one on MQTT would report through `normalize_property_params`.
+    """
+    if device_type.lower() != "d4":
+        return
+    _extract_camel(body, list(FEEDER_D4_FIELDS), state)
 
 
 def _derive_food_low(state: dict[str, Any]) -> None:
@@ -532,6 +546,7 @@ def _parse_feeder(body: dict[str, Any], device_type: str = "") -> dict[str, Any]
     # a key left solely to the list above would reach a next-gen feeder over
     # HTTP and vanish on the transport it actually reports state on.
     _extract_feeder_next_gen(body, state, device_type)
+    _extract_feeder_d4(body, state, device_type)
     # The `err{}` fault block, on both transports. Parse it on one only and the
     # Error sensor reads whatever the last transport to arrive had to say --
     # exactly the asymmetry this module's docstring calls the standard bug.
@@ -677,6 +692,7 @@ def normalize_property_params(device_type: str, params: dict[str, Any]) -> dict[
 
     _extract_fountain_w7h(params, flat, device_type)
     _extract_feeder_next_gen(params, flat, device_type)
+    _extract_feeder_d4(params, flat, device_type)
     _derive_food_low(flat)
     if device_type.lower() in LITTER_CAMERA_MODELS:
         _extract_sensor_block(params, flat, LITTER_CAMERA_HALLS)
