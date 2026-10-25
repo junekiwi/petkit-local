@@ -7,10 +7,13 @@ real device has not yet flashed anything this code offered.
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import os
+import socket
 
+import aiomqtt
 import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
@@ -21,6 +24,8 @@ from petkit_local.devices.registry import DeviceRegistry
 from petkit_local.http.handlers.ota import firmware_base_url, offers_firmware
 from petkit_local.http.proxy import close_proxy_session
 from petkit_local.http.server import create_app
+from petkit_local.mqtt.auth import compute_aliyun_sign
+from petkit_local.mqtt.broker import start_broker
 from petkit_local.patchers import esp32_ota
 from petkit_local.patchers.firmware import (
     FirmwareImageError, find_cert_slot, generate_ca_for_slot, verify_esp_image,
@@ -209,6 +214,34 @@ def test_reports_with_no_job_armed_change_nothing():
     assert esp32_ota.note_started(d) is None
     assert esp32_ota.note_completed(d, True, "") is None
     assert d.config == {}
+
+
+def test_an_armed_job_holds_the_device_on_http_until_it_ends():
+    # Both the nudge and the offer travel over HTTP only.
+    d = _device()
+    assert not esp32_ota.held_on_http(d)
+    esp32_ota.arm(d, _release(), "patched")
+    assert esp32_ota.held_on_http(d)
+    esp32_ota.note_completed(d, True, "")
+    assert not esp32_ota.held_on_http(d) and esp32_ota.uses_local_broker(d)
+
+    esp32_ota.arm(d, _release(), "stock")
+    assert esp32_ota.held_on_http(d) and not esp32_ota.uses_local_broker(d)
+    esp32_ota.disarm(d)
+    assert not esp32_ota.held_on_http(d)
+
+
+def test_re_arming_and_cancelling_leave_no_stale_nudge():
+    # A device off the heartbeat collects nothing, so each arm used to add
+    # one more nudge, and a cancel left its own behind.
+    d = _device()
+    other = {"msgType": 1, "payload": {"lightMode": 1}}
+    d.command_queue.append(other)
+    esp32_ota.arm(d, _release(), "patched")
+    esp32_ota.arm(d, _release(), "stock")
+    assert d.command_queue == [other, esp32_ota.ota_trigger(1031)]
+    esp32_ota.disarm(d)
+    assert d.command_queue == [other]
 
 
 # --------------------------------------------------------------------------- #
@@ -425,3 +458,84 @@ async def test_models_the_swap_is_not_offered_for_are_turned_away(tmp_path):
         assert r.status == 400
     finally:
         await client.close()
+
+
+# --------------------------------------------------------------------------- #
+# A device already on MQTT                                                    #
+# --------------------------------------------------------------------------- #
+
+
+def _free_port() -> int:
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+def _as_device(device: Device, port: int, timestamp: int) -> aiomqtt.Client:
+    """An MQTT client connecting the way the ESP32's LinkSDK does."""
+    pk, dn = device.mqtt_product_key, device.mqtt_device_name
+    return aiomqtt.Client(
+        "127.0.0.1", port,
+        identifier=f"{pk}.{dn}|timestamp={timestamp},signmethod=hmacsha256|",
+        username=f"{dn}&{pk}",
+        password=compute_aliyun_sign(device.mqtt_device_secret, f"{pk}.{dn}", dn, pk,
+                                     str(timestamp)),
+    )
+
+
+async def _until(predicate, timeout: float = 5) -> bool:
+    deadline = asyncio.get_running_loop().time() + timeout
+    while not predicate():
+        if asyncio.get_running_loop().time() > deadline:
+            return False
+        await asyncio.sleep(0.05)
+    return True
+
+
+async def test_arming_a_job_takes_a_device_on_mqtt_back_to_the_heartbeat(tmp_path, stock_image):
+    # A patched D4 armed for rollback stayed connected over MQTT and never
+    # collected the nudge, because a device on MQTT stops polling the
+    # heartbeat it is queued on.
+    reg = DeviceRegistry()
+    device = reg.get_or_create(petkit_id=100, device_type="d4", serial_number="SN100")
+    modules = {"userbin": stock_image}
+    release = esp32_ota.save_release(str(tmp_path), "d4", _listing(modules), modules)
+    esp32_ota.arm(device, release, "patched")
+    esp32_ota.note_completed(device, True, "")
+    device.command_queue.clear()
+
+    hub = EventHub()
+    port = _free_port()
+    broker = await start_broker(port, reg, hub=hub, data_dir=str(tmp_path))
+    app = create_panel_app(reg, BLERegistry(), hub,
+                           {"api_url": "http://192.0.2.5/6/", "data_dir": str(tmp_path)})
+    app["mqtt_broker"] = broker
+    client = TestClient(TestServer(app))
+    await client.start_server()
+    try:
+        async with _as_device(device, port, 1) as mqtt:
+            assert device.mqtt_connected
+
+            r = await client.post("/api/devices/100/firmware", json={"action": "rollback"})
+            assert (await r.json())["target"] == "stock"
+            assert device.command_queue == [esp32_ota.ota_trigger(1031)]
+
+            # The session is closed under it, and the flag follows.
+            with pytest.raises(aiomqtt.MqttError):
+                await asyncio.wait_for(anext(mqtt.messages), 5)
+            assert await _until(lambda: not device.mqtt_connected)
+        lines = [e["summary"] for e in hub.recent() if e["kind"] == "patcher"]
+        assert any("session was closed" in s for s in lines), lines
+
+        # Until the job ends it is refused, so it stays on the heartbeat.
+        with pytest.raises(aiomqtt.MqttError):
+            async with _as_device(device, port, 2):
+                pass
+        assert not device.mqtt_connected
+
+        await client.post("/api/devices/100/firmware", json={"action": "cancel"})
+        async with _as_device(device, port, 3):
+            assert device.mqtt_connected
+    finally:
+        await client.close()
+        await broker.shutdown()

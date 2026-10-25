@@ -115,6 +115,11 @@ Two rules about placement that the map does not make obvious:
   T4 1.652 apps have no app rollback (`ESP_OTA_IMG_PENDING_VERIFY` handling is compiled out), so
   nothing else switches back. A second pass would overwrite that safety net. Proxy mode must not
   forward an armed offer (`offers_firmware`): redaction turns every OTA reply into "no update".
+  A job reaches the device over HTTP only (heartbeat nudge, `dev_ota_check` offer), and a patched
+  device on MQTT no longer polls the heartbeat. So while a job is armed the broker refuses that
+  device's CONNECT (`esp32_ota.held_on_http`), and arming closes the session it already has
+  (`mqtt/broker.drop_device_session`). Handing it the placeholder key is not enough: a device on
+  MQTT does not ask for credentials again until it boots.
 - **Every patched ESP32 is handed ONE shared broker name, and the broker answers to it by SNI.**
   The firmware builds `<pk>.iot-as-mqtt.<region>.aliyuncs.com` itself — the domain is a fixed
   table entry, the key is prepended at runtime, so no image patch can drop it — which is why the

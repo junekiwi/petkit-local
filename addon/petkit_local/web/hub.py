@@ -237,12 +237,14 @@ class EventHub:
         """Record an MQTT broker connection attempt (see mqtt/auth.py).
 
         `info` carries at least `ok`; `username`/`client_id` when the
-        credentials could be parsed. A failed match is recorded too — it is
-        the single most useful thing to see when a device won't connect.
+        credentials could be parsed, and `refused` for a refusal that was not
+        a mismatch. A failed match is recorded too — it is the single most
+        useful thing to see when a device won't connect.
         """
         self._d(device_id)["last_connect"] = {"ts": time.time(), **info}
         who = info.get("username") or info.get("client_id") or "?"
-        self.publish("connect", device_id, f"MQTT connect: {who} ({'ok' if info.get('ok') else 'no-match'})")
+        outcome = "ok" if info.get("ok") else info.get("refused") or "no-match"
+        self.publish("connect", device_id, f"MQTT connect: {who} ({outcome})")
 
     def record_command(self, device_id: Any, transport: str, summary: str) -> None:
         """Publish a command we sent to a device (`transport` = mqtt/local/...)."""

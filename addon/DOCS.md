@@ -181,7 +181,11 @@ byte — and flashes it over the air, the way the device takes any update.
    names at this app, set *DNS for upstream lookups* in Setup first.
 2. **Flash patched.** The device is told on its next heartbeat, or takes it
    the next time it boots. Keep it powered until the card's log says done.
-3. **Roll back to stock** flashes PetKit's image back the same way.
+3. **Roll back to stock** flashes PetKit's image back the same way. A patched
+   device is on MQTT and no longer polls the heartbeat, so arming a job closes
+   its MQTT session and the broker refuses it until the job ends, so it falls
+   back to the heartbeat and is told there. If the card still says it is
+   waiting, power-cycle the device.
 
 A flash writes the device's spare firmware partition and switches to it. The
 partition it was running from keeps its old firmware, and the device falls

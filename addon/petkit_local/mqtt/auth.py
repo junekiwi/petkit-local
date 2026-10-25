@@ -27,6 +27,7 @@ from amqtt.mqtt.constants import QOS_0
 from amqtt.plugins.base import BaseAuthPlugin
 
 from petkit_local.mqtt.topics import downstream_filters
+from petkit_local.patchers.esp32_ota import held_on_http
 
 if TYPE_CHECKING:
     from amqtt.plugins.manager import BaseContext
@@ -405,18 +406,20 @@ class AliyunAuthPlugin(BaseAuthPlugin):
             self._hub.publish("connect", device.petkit_id, "MQTT session ended")
 
     def _record(self, device_id: int | None, client_id: str, username: str,
-                signmethod: str, ok: bool) -> None:
+                signmethod: str, ok: bool, refused: str = "") -> None:
         """Report one connection attempt to the web panel, if there is one.
 
         Failures are recorded too — a device that cannot connect is exactly the
         case a user needs to see — hence `device_id` being None for a client
-        that matched no registry entry.
+        that matched no registry entry. `refused` names a deliberate refusal,
+        so the panel does not show it as a credential mismatch.
         """
         if self._hub is not None:
-            self._hub.record_connect(device_id, {
-                "client_id": client_id, "username": username,
-                "signmethod": signmethod, "ok": ok,
-            })
+            info = {"client_id": client_id, "username": username,
+                    "signmethod": signmethod, "ok": ok}
+            if refused:
+                info["refused"] = refused
+            self._hub.record_connect(device_id, info)
 
     async def authenticate(self, *, session: Session) -> bool:
         """Decide whether one CONNECT may proceed (amqtt's auth hook).
@@ -425,11 +428,14 @@ class AliyunAuthPlugin(BaseAuthPlugin):
         and is always allowed: only devices are authenticated here.
 
         Returns:
-            True to accept. False is returned only under `set_strict` — the
-            default is fail-open, matching the reference broker, so a signature
-            or algorithm mismatch is loudly logged and the device still gets on.
-            That is deliberate: locking a physical device out of its only server
-            is worse than accepting an unverified one on a LAN-local broker.
+            True to accept. A failed check returns False only under
+            `set_strict` — the default is fail-open, matching the reference
+            broker, so a signature or algorithm mismatch is loudly logged and
+            the device still gets on. That is deliberate: locking a physical
+            device out of its only server is worse than accepting an unverified
+            one on a LAN-local broker. The one other refusal is an ESP32 with a
+            firmware job armed (`esp32_ota.held_on_http`). It still has HTTP,
+            which is where the job reaches it.
         """
         if not self._registry:
             log.warning("No device registry set - allowing connection")
@@ -458,6 +464,13 @@ class AliyunAuthPlugin(BaseAuthPlugin):
                 return False
             log.warning("Unknown MQTT device (allowed, non-strict): pk=%s dn=%s", pk, dn)
             return True
+
+        if held_on_http(device):
+            log.info("MQTT refused for device %d: a firmware job is armed, so it stays "
+                     "on the HTTP heartbeat until the job ends", device.petkit_id)
+            self._record(device.petkit_id, client_id, username, signmethod, False,
+                         refused="firmware job armed")
+            return False
 
         raw_client_id = f"{pk}.{dn}"
         expected_sign = compute_aliyun_sign(

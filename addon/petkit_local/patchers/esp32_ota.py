@@ -32,7 +32,9 @@ way, and from PetKit's own answers (petkit-firmware-tool reads the same keys):
   (`userbin`, `pics`, `lans`), and only `userbin` carries the CA.
 * A heartbeat entry `{"msgType": 0, "payload": {"firmwareId": N}, "type":
   "ota"}` makes the device check at once. It also checks when it boots, which is
-  why power-cycling it starts a job too.
+  why power-cycling it starts a job too. Both are HTTP, and a patched device on
+  MQTT has stopped polling the heartbeat, so an armed job takes it off the
+  broker until the job ends (`held_on_http`).
 * It reports `dev_ota_start`, then `dev_ota_complete` with `success=1` or with
   `errmsg=otafail-<code>`.
 
@@ -487,9 +489,26 @@ def uses_local_broker(device: Device) -> bool:
     True once a job of ours flashed it patched — it now trusts our CA — and
     while no job is armed. An armed job needs the device on the HTTP heartbeat,
     where the offer and the nudge reach it, so it is kept there until the job
-    ends, exactly like an unpatched one.
+    ends, exactly like an unpatched one (`held_on_http` is the broker's half).
     """
-    return firmware_state(device).get("running") == PATCHED and active_job(device) is None
+    return firmware_state(device).get("running") == PATCHED and not held_on_http(device)
+
+
+def held_on_http(device: Device) -> bool:
+    """Whether the broker must refuse this device's MQTT CONNECT. True while a
+    job is armed.
+
+    The nudge is a heartbeat entry and the offer is a `dev_ota_check` reply,
+    so a job reaches the device over HTTP only, and a device on MQTT has
+    stopped polling the heartbeat. Being handed the placeholder key
+    (`handed_broker`) does not move it: that only takes effect when it next
+    asks for credentials, and a device already on MQTT does not ask again
+    until it boots. A patched D4 armed for rollback sat exactly like that,
+    connected, with the nudge uncollected. So the broker refuses it, and
+    `web/api/firmware.py` closes the session it already has. Each lasts only
+    as long as the job.
+    """
+    return active_job(device) is not None
 
 
 def handed_broker(device: Device, option: bool) -> tuple[str, str] | None:
@@ -518,6 +537,17 @@ def ota_trigger(firmware_id: int) -> dict[str, Any]:
     return {"msgType": 0, "payload": {"firmwareId": firmware_id}, "type": "ota"}
 
 
+def _drop_ota_triggers(device: Device) -> None:
+    """Take any `ota_trigger` still waiting out of the heartbeat queue.
+
+    A device off the heartbeat collects nothing, so without this every re-arm
+    left one more nudge waiting for it, and a cancelled job left its own.
+    """
+    device.command_queue[:] = [
+        c for c in device.command_queue
+        if not (isinstance(c, dict) and c.get("msgType") == 0 and c.get("type") == "ota")]
+
+
 def set_release(device: Device, release: Release) -> None:
     """Record which stored release belongs to this device."""
     _state(device)["release"] = release.version
@@ -526,8 +556,10 @@ def set_release(device: Device, release: Release) -> None:
 def arm(device: Device, release: Release, target: str) -> None:
     """Arm a job flashing `target` from `release`, and nudge the device.
 
-    The nudge only reaches a device polling the HTTP heartbeat. One that is not
-    (on MQTT, or switched off) takes the offer the next time it boots.
+    The nudge only reaches a device polling the HTTP heartbeat. One on MQTT
+    has its session closed by the caller and is refused until the job ends
+    (`held_on_http`), so it falls back to the heartbeat. One switched off
+    takes the offer the next time it boots.
 
     Raises:
         ValueError: `target` is not a variant.
@@ -539,14 +571,17 @@ def arm(device: Device, release: Release, target: str) -> None:
     state["job"] = {"target": target, "version": release.version,
                     "firmware_id": release.firmware_id,
                     "armed_at": time.time(), "started_at": None}
+    _drop_ota_triggers(device)
     device.command_queue.append(ota_trigger(release.firmware_id))
 
 
 def disarm(device: Device) -> bool:
-    """Cancel the armed job. True if there was one."""
+    """Cancel the armed job, and its nudge if still uncollected. True if
+    there was one."""
     state = _state(device)
     had = bool(state.get("job"))
     state["job"] = None
+    _drop_ota_triggers(device)
     return had
 
 
