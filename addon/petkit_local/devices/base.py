@@ -132,7 +132,9 @@ class Device:
     `mqtt_device_secret`) is the exception: it is minted here exactly once and
     handed to the device by `to_iot_device_info*`. Losing it leaves the device
     connecting with credentials the broker no longer knows, which is why
-    `DeviceRegistry` writes a new device through synchronously.
+    `DeviceRegistry` writes a new device through synchronously. The one change
+    it ever sees: a patched ESP32's product key becomes the shared
+    `payloads.PATCHED_PRODUCT_KEY` at its first CONNECT under it (`mqtt/auth.py`).
     """
 
     device_type: str

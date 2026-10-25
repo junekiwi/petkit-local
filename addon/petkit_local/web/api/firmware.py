@@ -19,7 +19,6 @@ from urllib.parse import urlparse
 import aiohttp
 from aiohttp import web
 
-from petkit_local.devices.base import aliyun_broker_name
 from petkit_local.http.cloud_fetch import (
     FIRMWARE_TIMEOUT, CloudRefused, download_firmware_module, fetch_firmware_listing,
 )
@@ -73,12 +72,13 @@ async def _broker_status(request: web.Request, d: Any) -> dict[str, Any]:
     """The DNS record a patched device needs, and whether it is in place.
 
     The device dials `<productKey>.iot-as-mqtt.eu-central-1.aliyuncs.com` on
-    443 whatever address it is handed, so that name has to point here.
-    Resolved with this add-on's own resolver, which on most networks is the
-    one the device asks too. Aliyun answers every name under that domain, so
-    "resolves" alone proves nothing: it has to resolve to `host`.
+    443 whatever address it is handed, and every patched device is handed the
+    same key, so that one name (`esp32_ota.PATCHED_BROKER_NAME`) has to point
+    here. Resolved with this add-on's own resolver, which on most networks is
+    the one the device asks too. Aliyun answers every name under that domain,
+    so "resolves" alone proves nothing: it has to resolve to `host`.
     """
-    name = aliyun_broker_name(d.mqtt_product_key)
+    name = esp32_ota.PATCHED_BROKER_NAME
     return {
         "name": name,
         "host": self_mqtt_host(request.app["cfg"]),

@@ -10,7 +10,8 @@
 >   builds its MQTT broker name from the product key and trusts only PetKit's own root, so no local
 >   broker can serve them unflashed; unpatched they get a fixed key and need one DNS record. The
 >   Patchers tab can swap that root for one this add-on holds and flash it over OTA — then the
->   device is handed its real broker name and connects over MQTT (see [DOCS](addon/DOCS.md#networking)).
+>   device is handed a broker name every patched device shares, one more DNS record, and connects
+>   over MQTT (see [DOCS](addon/DOCS.md#networking)).
 > - **A D4 is answered the way PetKit answers it**: flat MQTT credentials, and its settings
 >   block (with `factor` and `lightRange`) at signup.
 > - **Upstream pull requests merged here**: flat credentials for T3/T4 (#42), Pura Air readings

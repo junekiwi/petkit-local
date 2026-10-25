@@ -348,6 +348,76 @@ async def test_a_refused_filter_does_not_stop_the_others():
     assert "/sys/a1PK/d_t5_SN100/thing/service/#" not in dev.mqtt_subscriptions
 
 
+async def test_a_patched_esp32_connecting_under_the_shared_key_adopts_it(tmp_path):
+    """Every patched ESP32 is handed one key so one DNS name serves them all.
+    The CONNECT under it must find the device by name, check the signature
+    against the key it actually signed with, and make that key the device's
+    own — every topic sent to it is built from `mqtt_product_key`, so a device
+    left on its old key would be subscribed, and commanded, where it is not
+    listening."""
+    from petkit_local.devices.payloads import PATCHED_PRODUCT_KEY
+
+    path = str(tmp_path / "devices.json")
+    reg = DeviceRegistry(persist_path=path)
+    dev = reg.get_or_create(400, "d4", serial_number="SN400")
+    own_key = dev.mqtt_product_key
+    plugin = AliyunAuthPlugin(BaseContext())
+    plugin.set_registry(reg)
+    plugin.set_strict(True)
+    broker = _FakeBroker()
+    plugin.set_broker(broker)
+
+    dn = dev.mqtt_device_name
+    client_id = f"{PATCHED_PRODUCT_KEY}.{dn}|timestamp=1,signmethod=hmacsha256|"
+
+    class _Session:
+        pass
+
+    s = _Session()
+    s.client_id = client_id
+    s.username = f"{dn}&{PATCHED_PRODUCT_KEY}"
+    s.password = compute_aliyun_sign(dev.mqtt_device_secret, f"{PATCHED_PRODUCT_KEY}.{dn}",
+                                     dn, PATCHED_PRODUCT_KEY, "1")
+
+    assert await plugin.authenticate(session=s) is True
+    assert dev.mqtt_connected is True
+    assert dev.mqtt_product_key == PATCHED_PRODUCT_KEY != own_key
+
+    await plugin.on_broker_client_connected(client_id, client_session=s)
+    assert dev.mqtt_subscriptions[0] == f"/sys/{PATCHED_PRODUCT_KEY}/{dn}/thing/service/#"
+
+    await reg.flush()
+    assert DeviceRegistry(persist_path=path).get(400).mqtt_product_key == PATCHED_PRODUCT_KEY
+
+    await plugin.on_broker_client_disconnected(client_id, client_session=s)
+    assert dev.mqtt_connected is False
+
+
+async def test_the_shared_key_signed_with_the_wrong_secret_is_refused_when_strict():
+    from petkit_local.devices.payloads import PATCHED_PRODUCT_KEY
+
+    reg = DeviceRegistry()
+    dev = reg.get_or_create(400, "d4", serial_number="SN400")
+    own_key = dev.mqtt_product_key
+    plugin = AliyunAuthPlugin(BaseContext())
+    plugin.set_registry(reg)
+    plugin.set_strict(True)
+
+    dn = dev.mqtt_device_name
+
+    class _Session:
+        pass
+
+    s = _Session()
+    s.client_id = f"{PATCHED_PRODUCT_KEY}.{dn}|timestamp=1,signmethod=hmacsha256|"
+    s.username = f"{dn}&{PATCHED_PRODUCT_KEY}"
+    s.password = compute_aliyun_sign("not-the-secret", f"{PATCHED_PRODUCT_KEY}.{dn}",
+                                     dn, PATCHED_PRODUCT_KEY, "1")
+
+    assert await plugin.authenticate(session=s) is False
+    assert dev.mqtt_product_key == own_key
+
+
 async def test_subscribing_without_a_broker_is_not_an_error():
     """The bare plugin the tests build has none, and neither would a broker
     whose injection failed."""

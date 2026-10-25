@@ -568,6 +568,36 @@ async def test_esp32_models_are_kept_on_http_by_default():
         await client.close()
 
 
+async def test_patched_esp32_models_share_one_broker_name():
+    """A per-device key would need a DNS record per device; every patched one
+    gets the same key, so one record serves them all. A job armed again (a
+    rollback) puts it back on the placeholder until the job ends."""
+    from petkit_local.patchers import esp32_ota
+
+    reg = DeviceRegistry()
+    client = await _client(reg)
+    try:
+        for n, dt in enumerate(("t4", "d4")):
+            hdr = {"X-Device": f"id=10{n}&sn=SN{dt}"}
+            await client.post(f"/6/{dt}/dev_signup", headers=hdr)
+            device = reg.get(100 + n)
+            device.config[esp32_ota.STATE_KEY] = {"running": esp32_ota.PATCHED, "job": None}
+            r = await client.post(f"/6/{dt}/dev_iot_device_info", headers=hdr)
+            res = (await r.json())["result"]
+            assert res["productKey"] == res["iotInstanceId"] == payloads.PATCHED_PRODUCT_KEY
+            assert res["mqttHost"] == (
+                "petkit-local-mqtt.iot-as-mqtt.eu-central-1.aliyuncs.com")
+            assert res["deviceName"] == device.mqtt_device_name
+            assert res["deviceSecret"] == device.mqtt_device_secret
+
+        reg.get(100).config[esp32_ota.STATE_KEY]["job"] = {"target": "stock"}
+        r = await client.post("/6/t4/dev_iot_device_info",
+                              headers={"X-Device": "id=100&sn=SNt4"})
+        assert (await r.json())["result"]["productKey"] == payloads.HTTP_ONLY_PRODUCT_KEY
+    finally:
+        await client.close()
+
+
 async def test_esp32_models_get_their_own_key_and_our_broker_when_option_off():
     """Off is for a reflashed device whose own broker name is pointed here."""
     reg = DeviceRegistry()

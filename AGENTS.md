@@ -115,17 +115,22 @@ Two rules about placement that the map does not make obvious:
   T4 1.652 apps have no app rollback (`ESP_OTA_IMG_PENDING_VERIFY` handling is compiled out), so
   nothing else switches back. A second pass would overwrite that safety net. Proxy mode must not
   forward an armed offer (`offers_firmware`): redaction turns every OTA reply into "no update".
-- **A patched ESP32 is handed its OWN broker name, and the broker answers to it by SNI.** The CA
-  swap only matters if the device then connects: `esp32_ota.uses_local_broker` is true once a job
-  flashed it `patched` and no job is armed, and `esp32_ota.http_only` folds that into
-  `esp32_http_only` for BOTH credential paths (`dev_iot_device_info` and proxy mode's rewrite) — so
-  a patched device gets its real product key, whose `<pk>.iot-as-mqtt.<region>.aliyuncs.com` name
-  DNS points here, while an unpatched one (or one mid-job) keeps `petkit-local-http`. The broker
-  shows that device the leaf the ESP32 CA signed, chosen by the SNI name it sent
-  (`mqtt/broker.Esp32Certificate`, gated on `BROKER_NAME_RE`); every other device keeps the
+- **Every patched ESP32 is handed ONE shared broker name, and the broker answers to it by SNI.**
+  The firmware builds `<pk>.iot-as-mqtt.<region>.aliyuncs.com` itself — the domain is a fixed
+  table entry, the key is prepended at runtime, so no image patch can drop it — which is why the
+  KEY is what is shared: `payloads.PATCHED_PRODUCT_KEY` (`petkit-local-mqtt`), one DNS record for
+  every patched device. `esp32_ota.uses_local_broker` is true once a job flashed it `patched` and
+  no job is armed, and `esp32_ota.handed_broker` is the one decision for BOTH credential paths
+  (`dev_iot_device_info` and proxy mode's rewrite): the shared key then, `petkit-local-http`
+  for an unpatched one (or one mid-job). Identity survives the sharing because the device name
+  is unique: `by_mqtt_name` resolves the shared key by name, and `mqtt/auth.py` adopts the key a
+  device connected with as its `mqtt_product_key`, because every topic sent to it is built from
+  that field. The broker shows that device the leaf the ESP32 CA signed, chosen by the SNI name it
+  sent (`mqtt/broker.Esp32Certificate`, gated on `BROKER_NAME_RE`); every other device keeps the
   self-signed `broker.crt` the Linux `cacert` patcher trusts. The SNI callback never raises — a
   failure there just serves the default cert, which is the pre-feature behaviour. One wildcard leaf
-  covers every product key, re-issued if the CA was re-minted.
+  covers every product key (a device patched before the shared key dials its own until it next
+  fetches credentials), re-issued if the CA was re-minted.
 - **Never 404 a device.** Unhandled endpoints fall through to `handle_catchall`; firmware reads 4xx
   as a server fault and retries forever. The `/{path:.*}` route stays registered last. Proxy mode
   holds the same line from the far side: an upstream that is unreachable, slow, or that REFUSES

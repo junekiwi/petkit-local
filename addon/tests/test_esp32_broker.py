@@ -85,6 +85,7 @@ def test_the_http_only_placeholder_never_asks_for_the_leaf():
     # The placeholder matches the broker-name shape, but it exists to be refused
     # at TLS so a device kept on HTTP stays there — so it must be excluded.
     assert esp32_ota.wants_esp32_leaf(ESP32_NAME)
+    assert esp32_ota.wants_esp32_leaf(esp32_ota.PATCHED_BROKER_NAME)
     assert not esp32_ota.wants_esp32_leaf(esp32_ota.HTTP_ONLY_BROKER_NAME)
     assert not esp32_ota.wants_esp32_leaf(esp32_ota.HTTP_ONLY_BROKER_NAME.upper())
     assert not esp32_ota.wants_esp32_leaf("petkit-local")
@@ -145,9 +146,14 @@ def _handshake(server_ctx: ssl.SSLContext, client_ctx: ssl.SSLContext,
         t.join()
 
 
-def test_a_patched_device_dialling_its_broker_name_gets_the_ca_signed_leaf(tmp_path, stock_image):
+@pytest.mark.parametrize("name", [
+    esp32_ota.PATCHED_BROKER_NAME,  # the shared name every patched device gets
+    ESP32_NAME,  # a device patched before that, still on its own key
+])
+def test_a_patched_device_dialling_its_broker_name_gets_the_ca_signed_leaf(
+        tmp_path, stock_image, name):
     _store(tmp_path, stock_image)
-    cn = _handshake(_server_context(tmp_path), _device_context(tmp_path), ESP32_NAME)
+    cn = _handshake(_server_context(tmp_path), _device_context(tmp_path), name)
     assert cn == esp32_ota.BROKER_LEAF_NAME  # the wildcard the device trusts
 
 

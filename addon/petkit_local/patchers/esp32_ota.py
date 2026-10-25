@@ -60,7 +60,9 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from petkit_local.devices.base import aliyun_broker_name
-from petkit_local.devices.payloads import HTTP_ONLY_PRODUCT_KEY
+from petkit_local.devices.payloads import (
+    HTTP_ONLY_PRODUCT_KEY, PATCHED_PRODUCT_KEY, http_only_broker,
+)
 from petkit_local.patchers.common import md5hex
 from petkit_local.patchers.firmware import (
     FirmwareImageError, find_cert_slot, format_cert_pem, generate_ca_for_slot,
@@ -186,9 +188,15 @@ def ensure_ca(data_dir: str, template_slot: bytes) -> tuple[bytes, bytes]:
 #: device asks for a name of this shape.
 BROKER_NAME_RE = re.compile(r"^[^.]+\.iot-as-mqtt\.[^.]+\.aliyuncs\.com$", re.IGNORECASE)
 
+#: The name every patched ESP32 dials once it is handed the shared
+#: `devices/payloads.PATCHED_PRODUCT_KEY` — the one DNS record local MQTT needs.
+PATCHED_BROKER_NAME = aliyun_broker_name(PATCHED_PRODUCT_KEY)
+
 #: One wildcard covers every device's name: mbedTLS matches a leading `*.` against
 #: exactly one label, which is all the product key is. localkit's broker
-#: certificate is the same wildcard, on the same firmware.
+#: certificate is the same wildcard, on the same firmware. It still matters with
+#: the shared key: a device patched before that key existed dials its own name
+#: until it next fetches credentials.
 BROKER_LEAF_NAME = aliyun_broker_name("*")
 
 #: The one broker name that must NOT be shown the leaf: the placeholder a device
@@ -474,7 +482,7 @@ def active_job(device: Device) -> dict[str, Any] | None:
 
 
 def uses_local_broker(device: Device) -> bool:
-    """Whether this device should be handed its own broker name.
+    """Whether this device should be handed the shared broker name.
 
     True once a job of ours flashed it patched — it now trusts our CA — and
     while no job is armed. An armed job needs the device on the HTTP heartbeat,
@@ -484,14 +492,20 @@ def uses_local_broker(device: Device) -> bool:
     return firmware_state(device).get("running") == PATCHED and active_job(device) is None
 
 
-def http_only(device: Device, option: bool) -> bool:
-    """`esp32_http_only` as it applies to this device: on, unless patched here.
+def handed_broker(device: Device, option: bool) -> tuple[str, str] | None:
+    """The `(productKey, mqttHost)` to hand this device in place of its own, or None.
 
     The one decision for both places a device is handed MQTT credentials —
-    `dev_iot_device_info` and proxy mode's rewrite of PetKit's — passed to
-    `devices/payloads.http_only_broker`, which cannot ask this module itself.
+    `dev_iot_device_info` and proxy mode's rewrite of PetKit's. A device patched
+    here with no job armed gets the shared `PATCHED_PRODUCT_KEY`; any other
+    model that builds its broker name gets the HTTP-only placeholder while
+    `esp32_http_only` (`option`) is on. Each is one fixed name, so DNS is set up
+    once rather than per device. The host is the name the device builds from
+    the key, which is the one it dials whatever it is handed.
     """
-    return option and not uses_local_broker(device)
+    if uses_local_broker(device):
+        return PATCHED_PRODUCT_KEY, PATCHED_BROKER_NAME
+    return http_only_broker(device, option)
 
 
 def ota_trigger(firmware_id: int) -> dict[str, Any]:

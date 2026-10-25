@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+- **Every patched T3/T4/D4 now shares one broker name, so local MQTT needs one
+  DNS record instead of one per device.** The firmware builds its broker name by
+  putting the product key in front of a fixed Aliyun domain, so a key per device
+  meant a record per device. Every patched device is now handed the same key,
+  `petkit-local-mqtt`, and dials
+  `petkit-local-mqtt.iot-as-mqtt.eu-central-1.aliyuncs.com`. Point that name at
+  the HA host once; with `petkit-local-http` → `127.0.0.1` for the unpatched
+  ones, those two records cover any number of devices. The broker tells devices
+  apart by their device names, which were always unique, and the firmware card
+  shows the shared name. A device patched with 2.2.0 or 2.2.1 keeps dialling its
+  own name until it next asks for credentials, which it does when it boots, so
+  keep its record until the card shows it connected, then remove it.
+
 ## 2.2.1 — 2026-10-24
 
 - **The upstream server and DNS fields are no longer hidden while proxy mode is

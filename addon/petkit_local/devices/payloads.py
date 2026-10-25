@@ -131,6 +131,17 @@ def to_iot_device_info(device: Device, mqtt_host: str) -> dict[str, Any]:
 #: `noresolv-localkit-io` for the same purpose while it flashes a device.
 HTTP_ONLY_PRODUCT_KEY = "petkit-local-http"
 
+#: The product key handed to EVERY ESP32 model whose firmware was patched to
+#: trust this broker (`patchers/esp32_ota.uses_local_broker`). The firmware puts
+#: the key in front of the broker domain itself — the domain is a fixed table
+#: entry with no `%s` in it, so no patch to the image can drop the key — and a
+#: key per device would need a DNS record per device. One key shared by all of
+#: them makes it one name, pointed at this add-on once. Identity survives the
+#: sharing because the device name (`d_{type}_{sn}`) is unique on its own:
+#: `DeviceRegistry.by_mqtt_name` resolves this key by name, and `mqtt/auth.py`
+#: adopts it as the device's own key at its first CONNECT with it.
+PATCHED_PRODUCT_KEY = "petkit-local-mqtt"
+
 
 def http_only_broker(device: Device, enabled: bool) -> tuple[str, str] | None:
     """The `(productKey, mqttHost)` that keeps an ESP32 model on HTTP, or None.
@@ -138,8 +149,8 @@ def http_only_broker(device: Device, enabled: bool) -> tuple[str, str] | None:
     One decision for the two places a device is handed MQTT credentials — our
     own `dev_iot_device_info` and proxy mode's rewrite of PetKit's — so that
     proxy mode cannot hand back the device's own key and send it to Aliyun.
-    Both pass `enabled` through `patchers/esp32_ota.http_only`, which turns it
-    off for a device whose firmware was patched to trust this broker.
+    Both reach it through `patchers/esp32_ota.handed_broker`, which answers
+    first, with `PATCHED_PRODUCT_KEY`, for a device patched to trust this broker.
     """
     if not enabled or device.device_type.lower() not in DEVICE_TYPES_DERIVED_BROKER:
         return None
@@ -157,8 +168,9 @@ def to_iot_device_info_flat(device: Device, mqtt_host: str,
     get it is `iot_device_info.FLAT_CREDENTIAL_TYPES`.
 
     `product_key` replaces the device's own for the HTTP-only mode
-    (`HTTP_ONLY_PRODUCT_KEY`); `mqtt_host` should then be the name the device
-    builds from it, which is the one it actually dials.
+    (`HTTP_ONLY_PRODUCT_KEY`) and for a patched device (`PATCHED_PRODUCT_KEY`);
+    `mqtt_host` should then be the name the device builds from it, which is the
+    one it actually dials.
     """
     product_key = product_key or device.mqtt_product_key
     return {

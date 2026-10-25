@@ -97,21 +97,21 @@ async def handle_iot_device_info(request: web.Request) -> web.Response:
         device signs its MQTT CONNECT with (see `mqtt/auth.py`):
         `payloads.to_iot_device_info_flat()` for `FLAT_CREDENTIAL_TYPES`,
         `payloads.to_iot_device_info()` (nested in the Aliyun `ali` envelope)
-        for everything else. A model kept on HTTP (`payloads.http_only_broker`)
-        gets `payloads.HTTP_ONLY_PRODUCT_KEY` and the broker name built from it
-        — unless its firmware was patched from the panel and no job is armed
-        (`patchers/esp32_ota.http_only`), when it gets its own key, whose name
-        DNS points at this broker.
+        for everything else. A model that builds its broker name from the key
+        is handed a fixed one instead (`patchers/esp32_ota.handed_broker`):
+        `payloads.PATCHED_PRODUCT_KEY` once its firmware was patched from the
+        panel and no job is armed, whose name DNS points at this broker, and
+        `payloads.HTTP_ONLY_PRODUCT_KEY` otherwise, whose name DNS points at an
+        address that refuses it.
     """
     device = _resolve_or_create_device(request)
     if not device:
         return no_device_response()
     config = request.app["config"]
-    http_only = payloads.http_only_broker(
-        device, esp32_ota.http_only(device, config.get("esp32_http_only", True)))
-    if http_only:
-        product_key, mqtt_host = http_only
-        log.info("IoT device info (flat, HTTP only): id=%d -> pk=%s mqttHost=%s",
+    handed = esp32_ota.handed_broker(device, config.get("esp32_http_only", True))
+    if handed:
+        product_key, mqtt_host = handed
+        log.info("IoT device info (flat, fixed key): id=%d -> pk=%s mqttHost=%s",
                  device.petkit_id, product_key, mqtt_host)
         return web.json_response(
             payloads.to_iot_device_info_flat(device, mqtt_host, product_key))

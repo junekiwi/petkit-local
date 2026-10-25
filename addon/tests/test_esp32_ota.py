@@ -385,6 +385,8 @@ async def test_fetch_then_flash_then_cancel_from_the_panel(tmp_path, stock_image
 
         status = await (await client.get("/api/devices/100/firmware")).json()
         assert status["release"]["version"] == "1.267" and status["ca_sha256"]
+        # One name for every patched device, never one built from its own key.
+        assert status["broker"]["name"] == esp32_ota.PATCHED_BROKER_NAME
 
         r = await client.post("/api/devices/100/firmware", json={"action": "flash"})
         assert (await r.json())["target"] == "patched"
