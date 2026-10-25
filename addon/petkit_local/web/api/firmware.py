@@ -3,8 +3,10 @@
 `patchers/esp32_ota.py` holds the store and the job; this is the panel's way in.
 Every action is a button: `fetch` is the one call to PetKit (signed as the
 device, like every other `http/cloud_fetch.py` request), and `flash` /
-`rollback` only arm a job — the device does the rest the next time it asks
-`dev_ota_check`, and reports back through `http/handlers/ota.py`. Progress is
+`rollback` only arm a job — and close the MQTT session of a device that has
+one, since the job reaches it over HTTP only. The device does the rest the
+next time it asks `dev_ota_check`, and reports back through
+`http/handlers/ota.py`. Progress is
 narrated on the hub as `patcher` events prefixed `[esp32fw]`, which the
 Patchers tab follows the way it follows a Linux patcher's run.
 """
@@ -25,6 +27,7 @@ from petkit_local.http.cloud_fetch import (
 from petkit_local.http.dns import UpstreamResolver
 from petkit_local.http.handlers.iot_device_info import self_mqtt_host
 from petkit_local.http.proxy import resolve_upstream
+from petkit_local.mqtt.broker import drop_device_session
 from petkit_local.patchers import esp32_ota
 from petkit_local.patchers.firmware import FirmwareImageError
 from petkit_local.web.api._common import _device_or_404, _json_body
@@ -175,8 +178,18 @@ async def api_firmware_action(request: web.Request) -> web.Response:
     target = esp32_ota.PATCHED if action == "flash" else esp32_ota.STOCK
     esp32_ota.arm(d, release, target)
     reg.save()
-    where = ("it takes MQTT now, so power-cycle it to start" if d.mqtt_connected
-             else "it is told on its next heartbeat; power-cycling it also starts it")
+    # A device on MQTT has stopped polling the heartbeat the nudge is queued
+    # on. Closed here and refused until the job ends (`held_on_http`), it
+    # falls back to it.
+    broker = request.app.get("mqtt_broker")
+    if d.mqtt_connected and broker is not None and await drop_device_session(
+            broker, d.mqtt_product_key, d.mqtt_device_name):
+        where = ("its MQTT session was closed, so it returns to the heartbeat and is "
+                 "told there; power-cycling it also starts it")
+    elif d.mqtt_connected:
+        where = "it takes MQTT now, so power-cycle it to start"
+    else:
+        where = "it is told on its next heartbeat; power-cycling it also starts it"
     say(f"armed: {target} {release.version} — {where}")
     return web.json_response({"ok": True, "action": action, "target": target})
 

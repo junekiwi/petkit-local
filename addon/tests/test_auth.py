@@ -418,6 +418,33 @@ async def test_the_shared_key_signed_with_the_wrong_secret_is_refused_when_stric
     assert dev.mqtt_product_key == own_key
 
 
+async def test_an_esp32_with_a_firmware_job_armed_is_refused_even_when_not_strict():
+    """The job's nudge and offer travel over HTTP only, and a device on MQTT
+    stops polling the heartbeat — a patched D4 armed for rollback sat
+    connected with the nudge uncollected. Refused, it falls back to HTTP."""
+    from petkit_local.patchers import esp32_ota
+    from petkit_local.web.hub import EventHub
+
+    reg = DeviceRegistry()
+    dev = reg.get_or_create(400, "d4", serial_number="SN400")
+    plugin = AliyunAuthPlugin(BaseContext())
+    plugin.set_registry(reg)
+    hub = EventHub()
+    plugin.set_hub(hub)
+    client_id = f"{dev.mqtt_product_key}.{dev.mqtt_device_name}|timestamp=1,signmethod=hmacsha256|"
+    s = _authenticated_session(plugin, dev, client_id)
+
+    esp32_ota.arm(dev, esp32_ota.Release("d4", "1.267", 1031, ()), "stock")
+    assert await plugin.authenticate(session=s) is False
+    assert dev.mqtt_connected is False
+    assert hub.diag(400)["last_connect"]["refused"] == "firmware job armed"
+    assert "(firmware job armed)" in hub.recent()[-1]["summary"]
+
+    esp32_ota.disarm(dev)
+    assert await plugin.authenticate(session=s) is True
+    assert dev.mqtt_connected is True
+
+
 async def test_subscribing_without_a_broker_is_not_an_error():
     """The bare plugin the tests build has none, and neither would a broker
     whose injection failed."""

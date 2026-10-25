@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **Rolling back (or re-flashing) a patched T3/T4/D4 no longer waits forever on
+  a device that is on MQTT.** The job's nudge goes out on the HTTP heartbeat,
+  and the offer is an HTTP reply, but a patched device on MQTT stops polling the
+  heartbeat. A D4 armed for rollback sat connected with the nudge uncollected
+  and the card stuck on "waiting for the device". Arming a job now closes the
+  device's MQTT session, and the broker refuses it until the job ends, so it
+  falls back to the heartbeat and is told there. Re-arming or cancelling also
+  no longer leaves extra nudges queued.
+
 - **Every patched T3/T4/D4 now shares one broker name, so local MQTT needs one
   DNS record instead of one per device.** The firmware builds its broker name by
   putting the product key in front of a fixed Aliyun domain, so a key per device

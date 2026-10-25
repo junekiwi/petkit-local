@@ -384,3 +384,29 @@ def delivery_view(broker, product_key: str, device_name: str) -> dict:
         "filters": sorted(filters),
         "sessions": [{"client_id": c, "state": s} for c, s in sessions.items()],
     }
+
+
+async def drop_device_session(broker, product_key: str, device_name: str) -> bool:
+    """Close one device's live session, the way amqtt's own take-over does.
+
+    `handle_connection_closed` releases the session's message loop exactly as
+    an abrupt drop would, so the socket is closed and `CLIENT_DISCONNECTED`
+    fires, which clears `mqtt_connected` (`mqtt/auth.py`). Whether the device
+    stays off is for `authenticate` to decide when it reconnects. Sessions are
+    matched by client id, as in `delivery_view`.
+
+    Returns:
+        True if a connected session was closed.
+    """
+    dropped = False
+    for client_id, (session, handler) in list((getattr(broker, "sessions", None) or {}).items()):
+        parsed = parse_client_id(client_id or "")
+        if not (parsed and parsed["product_key"] == product_key
+                and parsed["device_name"] == device_name):
+            continue
+        if getattr(getattr(session, "transitions", None), "state", None) != "connected":
+            continue
+        await handler.handle_connection_closed()
+        log.info("Closed the MQTT session of %s", client_id)
+        dropped = True
+    return dropped
