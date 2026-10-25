@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.2.2 — 2026-10-25
 
 - **Rolling back (or re-flashing) a patched T3/T4/D4 no longer waits forever on
   a device that is on MQTT.** The job's nudge goes out on the HTTP heartbeat,
