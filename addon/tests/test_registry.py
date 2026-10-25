@@ -98,6 +98,20 @@ def test_by_mqtt_name_lookup():
     assert reg.by_mqtt_name("nope", "nope") is None
 
 
+def test_by_mqtt_name_resolves_the_shared_patched_key_by_device_name():
+    """Every patched ESP32 connects under one key, so the name decides."""
+    from petkit_local.devices.payloads import PATCHED_PRODUCT_KEY
+
+    reg = DeviceRegistry()
+    t4 = reg.get_or_create(petkit_id=3, device_type="t4", serial_number="SN3")
+    d4 = reg.get_or_create(petkit_id=4, device_type="d4", serial_number="SN4")
+    assert reg.by_mqtt_name(PATCHED_PRODUCT_KEY, t4.mqtt_device_name) is t4
+    assert reg.by_mqtt_name(PATCHED_PRODUCT_KEY, d4.mqtt_device_name) is d4
+    assert reg.by_mqtt_name(PATCHED_PRODUCT_KEY, "d_t4_UNKNOWN") is None
+    # Any other key still has to be the device's own.
+    assert reg.by_mqtt_name(d4.mqtt_product_key, t4.mqtt_device_name) is None
+
+
 def test_get_or_create_is_idempotent():
     reg = DeviceRegistry()
     a = reg.get_or_create(petkit_id=1, device_type="t5")

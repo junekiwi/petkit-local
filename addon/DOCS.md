@@ -141,11 +141,18 @@ provisioned over Bluetooth.
 
 **To put them on MQTT instead, patch the firmware** (Patchers tab — see
 *Patching a T3, T4 or D4 firmware* above). A patched device trusts a
-certificate this app holds, so it no longer needs the refuse trick: it is
-handed its real product-key name, and you point *that* at the HA host rather
-than at `127.0.0.1`. The broker then answers to it, and the device switches to
-MQTT. HTTP stays the bootstrap and the fallback either way, so the HTTP record
-above is what every unpatched device needs and is the right default.
+certificate this app holds, so it no longer needs the refuse trick: every
+patched device is handed the key `petkit-local-mqtt`, and you point that one
+name at the HA host rather than at `127.0.0.1`:
+
+```
+petkit-local-mqtt.iot-as-mqtt.eu-central-1.aliyuncs.com  →  <HA host>
+```
+
+The broker then answers to it, and the device switches to MQTT. The two
+records are all the DNS any number of these devices need. HTTP stays the
+bootstrap and the fallback either way, so the HTTP record above is what every
+unpatched device needs and is the right default.
 
 **Linux models** (T5/T6/T7/D4H/D4SH/W7H) enforce HTTPS, so a DNS override alone
 will not do; use BLE provisioning, which sidesteps HTTPS entirely. They also
@@ -180,16 +187,21 @@ A flash writes the device's spare firmware partition and switches to it. The
 partition it was running from keeps its old firmware, and the device falls
 back to that if the new one ever fails to start, so one flash is enough.
 
-Once it is patched, the device is handed its own broker name —
-`<productKey>.iot-as-mqtt.eu-central-1.aliyuncs.com`, shown on the firmware
-card — and it then connects over MQTT instead of polling the HTTP heartbeat,
-so a command reaches it in well under a second. For that to work the name has
-to resolve to this add-on: add one DNS record pointing it at the HA host, the
-same kind of record the HTTP-only mode needs. The card says whether it already
-resolves here. The broker answers to that name with a certificate the patched
-firmware trusts; no device option changes, and nothing happens for a device
-you have not flashed. Rolling back to stock hands it the placeholder key again
-and it returns to HTTP.
+Once it is patched, the device is handed the broker name every patched device
+shares — `petkit-local-mqtt.iot-as-mqtt.eu-central-1.aliyuncs.com`, shown on
+the firmware card — and it then connects over MQTT instead of polling the HTTP
+heartbeat, so a command reaches it in well under a second. For that to work the
+name has to resolve to this add-on: add one DNS record pointing it at the HA
+host, the same kind of record the HTTP-only mode needs, once for all your
+patched devices. The card says whether it already resolves here. The broker
+answers to that name with a certificate the patched firmware trusts; no device
+option changes, and nothing happens for a device you have not flashed. Rolling
+back to stock hands it the placeholder key again and it returns to HTTP.
+
+A device patched with version 2.2.1 or earlier was handed a name of its own,
+`<productKey>.iot-as-mqtt.eu-central-1.aliyuncs.com`, and keeps dialling it
+until it next asks for its credentials, which it does when it boots. Keep that
+record until the card shows it connected under the shared name, then remove it.
 
 This has not yet been flashed onto a device by this app. It is done at your
 own risk, like every patcher.

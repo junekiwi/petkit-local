@@ -13,6 +13,7 @@ from typing import Any
 
 from petkit_local.devices import defaults
 from petkit_local.devices.base import Device
+from petkit_local.devices.payloads import PATCHED_PRODUCT_KEY
 from petkit_local.utils.jsonio import atomic_write_json, atomic_write_text, read_json
 
 log = logging.getLogger(__name__)
@@ -357,9 +358,16 @@ class DeviceRegistry(PersistedRegistry):
         return list(self._devices.values())
 
     def by_mqtt_name(self, product_key: str, device_name: str) -> Device | None:
-        """Find a device by its MQTT identity, as seen in a broker client id."""
+        """Find a device by its MQTT identity, as seen in a broker client id.
+
+        `payloads.PATCHED_PRODUCT_KEY` is shared by every patched ESP32, so it
+        is matched by the device name alone, which is unique on its own. That
+        is what lets a patched device connect under the shared key before
+        `mqtt/auth.py` has adopted it as its own.
+        """
         for d in self._devices.values():
-            if d.mqtt_product_key == product_key and d.mqtt_device_name == device_name:
+            if d.mqtt_device_name == device_name and product_key in (
+                    d.mqtt_product_key, PATCHED_PRODUCT_KEY):
                 return d
         return None
 

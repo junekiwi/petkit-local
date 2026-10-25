@@ -245,7 +245,8 @@ class AliyunAuthPlugin(BaseAuthPlugin):
         log.info("Subscribed device %d (%s) on its behalf: %s",
                  device.petkit_id, device.device_type, ", ".join(added))
 
-    def _mark_mqtt_connected(self, device: Device, session: Session) -> None:
+    def _mark_mqtt_connected(self, device: Device, session: Session,
+                             product_key: str) -> None:
         """Mark the device as having a live MQTT session (drives command routing
         and the UI badge).
 
@@ -254,7 +255,22 @@ class AliyunAuthPlugin(BaseAuthPlugin):
         `devices/base.py::Device.mqtt_connected_at`. The session is remembered
         for the same reason on the broker's side: `on_broker_client_disconnected`
         has to know which one it is being told about.
+
+        `product_key` is the one the device connected with, and becomes its
+        own. They differ only for the shared `payloads.PATCHED_PRODUCT_KEY`,
+        which `by_mqtt_name` resolves by device name: every topic sent to the
+        device — its server-side subscriptions, commands, proxy mode's
+        relaying — is built from `device.mqtt_product_key`, and must name the
+        key this session is listening under. Adopted on the same terms as the
+        session itself, signature mismatch included under non-strict, because
+        this is the session its commands are about to be routed to.
         """
+        if product_key != device.mqtt_product_key:
+            log.info("Device %d now uses product key %s (was %s)",
+                     device.petkit_id, product_key, device.mqtt_product_key)
+            device.mqtt_product_key = product_key
+            if self._registry is not None:
+                self._registry.mark_dirty()
         now = time.time()
         device.mqtt_connected = True
         device.mqtt_connected_at = now
@@ -464,7 +480,7 @@ class AliyunAuthPlugin(BaseAuthPlugin):
                      dn, device.petkit_id, signmethod,
                      getattr(session, "keep_alive", "?"))
             device.online = True
-            self._mark_mqtt_connected(device, session)
+            self._mark_mqtt_connected(device, session, pk)
             self._record(device.petkit_id, client_id, username, signmethod, True)
             return True
 
@@ -479,5 +495,5 @@ class AliyunAuthPlugin(BaseAuthPlugin):
                     "expected=%s got=%s", dn, signmethod,
                     expected_sign[:16], password[:16] if password else "empty")
         device.online = True
-        self._mark_mqtt_connected(device, session)
+        self._mark_mqtt_connected(device, session, pk)
         return True
